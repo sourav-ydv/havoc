@@ -15,5 +15,11 @@ dependencies = [
     "pydantic>=2.7",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["havoc"]
