@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
@@ -9,6 +10,8 @@ from openai.types.chat import ChatCompletion
 from havoc.cache import Cache, make_key
 
 load_dotenv()
+
+MAX_RETRIES = 3
 
 stats = {"hits": 0, "misses": 0}
 provider_counts = {}
@@ -63,6 +66,15 @@ def available_providers():
     return found
 
 
+def backoff_seconds(err, attempt):
+    headers = getattr(getattr(err, "response", None), "headers", None) or {}
+    try:
+        hinted = float(headers.get("retry-after", ""))
+    except (TypeError, ValueError):
+        hinted = 0.0
+    return min(hinted or 2 ** (attempt + 1), 30.0)
+
+
 def chat(messages, tools=None, temperature=0.0, scope="", use_cache=True):
     key = make_key(messages, tools, temperature, scope)
 
@@ -82,11 +94,23 @@ def chat(messages, tools=None, temperature=0.0, scope="", use_cache=True):
         args = {"model": p.model, "messages": messages, "temperature": temperature}
         if tools:
             args["tools"] = tools
-        try:
-            reply = client.chat.completions.create(**args)
-        except Exception as err:
-            last_error = err
-            print(f"[havoc] {p.name} failed: {str(err)[:200]}", file=sys.stderr)
+
+        reply = None
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                reply = client.chat.completions.create(**args)
+                break
+            except Exception as err:
+                last_error = err
+                if getattr(err, "status_code", None) == 429 and attempt < MAX_RETRIES:
+                    wait = backoff_seconds(err, attempt)
+                    print(f"[havoc] {p.name} rate limited, waiting {wait:.0f}s", file=sys.stderr)
+                    time.sleep(wait)
+                    continue
+                print(f"[havoc] {p.name} failed: {str(err)[:200]}", file=sys.stderr)
+                break
+
+        if reply is None:
             continue
 
         stats["misses"] += 1

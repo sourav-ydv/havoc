@@ -10,6 +10,12 @@ from havoc.sandbox.session import open_session
 from havoc.tasks import TASKS, get_task
 
 
+def root_cause(err):
+    while getattr(err, "exceptions", None):
+        err = err.exceptions[0]
+    return err
+
+
 async def run_task(task, scope):
     db_path = f".havoc/baseline/{task.id}.db"
     state.reset(db_path)
@@ -25,7 +31,11 @@ async def main(task_ids, scope, verbose):
     passed = 0
 
     for task in tasks:
-        result, ok = await run_task(task, scope)
+        try:
+            result, ok = await run_task(task, scope)
+        except Exception as err:
+            print(f"ERROR {task.id}: {root_cause(err)}")
+            return
         passed += ok
         label = "PASS" if ok else "FAIL"
         model = ",".join(result.models)

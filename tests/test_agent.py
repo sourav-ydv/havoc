@@ -174,3 +174,44 @@ def test_run_stops_at_max_turns(monkeypatch, tmp_path):
     assert result.stop_reason == "max_turns"
     assert result.turns == 3
     assert len(result.calls) == 3
+
+
+def test_provider_extras_on_tool_calls_are_echoed_back(monkeypatch, tmp_path):
+    first = ChatCompletion.model_validate(
+        {
+            "id": "t",
+            "object": "chat.completion",
+            "created": 0,
+            "model": "fake",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "tool_calls",
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "c1",
+                                "type": "function",
+                                "extra_content": {"google": {"thought_signature": "sig-123"}},
+                                "function": {
+                                    "name": "get_order",
+                                    "arguments": json.dumps({"order_id": "A1001"}),
+                                },
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+    )
+    _, _, script = play(monkeypatch, tmp_path, [first, reply("done")])
+    echoed = script.seen[1][-2]["tool_calls"][0]
+    assert echoed["extra_content"] == {"google": {"thought_signature": "sig-123"}}
+
+
+def test_tool_calls_without_extras_stay_plain(monkeypatch, tmp_path):
+    replies = [reply(calls=[("c1", "get_order", {"order_id": "A1001"})]), reply("done")]
+    _, _, script = play(monkeypatch, tmp_path, replies)
+    assert "extra_content" not in script.seen[1][-2]["tool_calls"][0]

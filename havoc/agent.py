@@ -69,6 +69,18 @@ def to_openai_tools(tools):
     ]
 
 
+def tool_call_entry(tc, fallback_id):
+    entry = {
+        "id": tc.id or fallback_id,
+        "type": "function",
+        "function": {"name": tc.function.name, "arguments": tc.function.arguments or "{}"},
+    }
+    extra = (getattr(tc, "model_extra", None) or {}).get("extra_content")
+    if extra:
+        entry["extra_content"] = extra
+    return entry
+
+
 def result_text(result):
     parts = [c.text for c in result.content if getattr(c, "type", None) == "text"]
     return "\n".join(parts)
@@ -112,30 +124,25 @@ async def run_agent(session, prompt, scope="", max_turns=10, temperature=0.0):
             messages.append({"role": "assistant", "content": text})
             return RunResult(text, calls, messages, "done", turn + 1, models)
 
-        requested = [
-            (tc.id or f"call_{turn}_{i}", tc.function.name, tc.function.arguments)
+        entries = [
+            tool_call_entry(tc, f"call_{turn}_{i}")
             for i, tc in enumerate(message.tool_calls)
         ]
         messages.append(
             {
                 "role": "assistant",
                 "content": message.content or "",
-                "tool_calls": [
-                    {
-                        "id": call_id,
-                        "type": "function",
-                        "function": {"name": name, "arguments": raw or "{}"},
-                    }
-                    for call_id, name, raw in requested
-                ],
+                "tool_calls": entries,
             }
         )
 
-        for call_id, name, raw in requested:
-            call = await execute(session, name, raw)
+        for entry in entries:
+            call = await execute(
+                session, entry["function"]["name"], entry["function"]["arguments"]
+            )
             calls.append(call)
             messages.append(
-                {"role": "tool", "tool_call_id": call_id, "content": call.output}
+                {"role": "tool", "tool_call_id": entry["id"], "content": call.output}
             )
 
     return RunResult("", calls, messages, "max_turns", max_turns, models)
