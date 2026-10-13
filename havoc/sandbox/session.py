@@ -7,10 +7,21 @@ from mcp.client.stdio import stdio_client
 
 
 @asynccontextmanager
-async def open_session(db_path):
+async def open_session(db_path, trace_path=None):
+    command = [sys.executable, "-m", "havoc.sandbox.server"]
+    if trace_path:
+        command = [
+            sys.executable,
+            "-m",
+            "havoc.proxy",
+            "--trace",
+            str(trace_path),
+            "--",
+        ] + command
+
     params = StdioServerParameters(
-        command=sys.executable,
-        args=["-m", "havoc.sandbox.server"],
+        command=command[0],
+        args=command[1:],
         env={**os.environ, "HAVOC_STATE_DB": str(db_path)},
     )
     async with stdio_client(params) as (read, write):
