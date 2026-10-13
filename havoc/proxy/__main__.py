@@ -3,14 +3,16 @@ import subprocess
 import sys
 import threading
 
+from havoc.faults import load_plan
 from havoc.proxy.intercept import Interceptor, TraceWriter
 
 
-def pump(source, sink, transform, on_end):
+def pump(source, deliver, transform, on_end):
     try:
         for line in iter(source.readline, b""):
-            sink.write(transform(line))
-            sink.flush()
+            out = transform(line)
+            if out is not None:
+                deliver(out)
     except (BrokenPipeError, OSError, ValueError):
         pass
     finally:
@@ -28,21 +30,34 @@ def main():
     own_args, command = split_command(sys.argv[1:])
     parser = argparse.ArgumentParser(prog="havoc.proxy")
     parser.add_argument("--trace")
+    parser.add_argument("--faults")
     args = parser.parse_args(own_args)
     if not command:
         parser.error("give the server command after --")
 
     child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-    interceptor = Interceptor(TraceWriter(args.trace))
+    out_lock = threading.Lock()
+
+    def to_client(data):
+        with out_lock:
+            sys.stdout.buffer.write(data)
+            sys.stdout.buffer.flush()
+
+    def to_server(data):
+        child.stdin.write(data)
+        child.stdin.flush()
+
+    plan = load_plan(args.faults) if args.faults else []
+    interceptor = Interceptor(TraceWriter(args.trace), plan, emit=to_client)
 
     upstream = threading.Thread(
         target=pump,
-        args=(sys.stdin.buffer, child.stdin, interceptor.from_client, child.stdin.close),
+        args=(sys.stdin.buffer, to_server, interceptor.from_client, child.stdin.close),
         daemon=True,
     )
     downstream = threading.Thread(
         target=pump,
-        args=(child.stdout, sys.stdout.buffer, interceptor.from_server, lambda: None),
+        args=(child.stdout, to_client, interceptor.from_server, lambda: None),
         daemon=True,
     )
     upstream.start()
