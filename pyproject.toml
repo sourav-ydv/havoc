@@ -13,6 +13,7 @@ dependencies = [
     "openai>=1.40",
     "python-dotenv>=1.0",
     "pydantic>=2.7",
+    "mcp>=2.0,<3",
 ]
 
 [project.optional-dependencies]
