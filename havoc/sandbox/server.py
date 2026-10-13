@@ -40,7 +40,7 @@ def send_email(to_addr: str, subject: str, body: str) -> str:
     return call(state.send_email, to_addr, subject, body)
 
 
-@server.tool(description="Open a support ticket, optionally linked to an order id.")
+@server.tool(description="Open a support ticket. Link it to an order id whenever the issue concerns an order.")
 def create_ticket(summary: str, order_id: str | None = None) -> str:
     return call(state.create_ticket, summary, order_id)
 

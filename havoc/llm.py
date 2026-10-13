@@ -1,4 +1,5 @@
 import os
+import sys
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
@@ -10,6 +11,7 @@ from havoc.cache import Cache, make_key
 load_dotenv()
 
 stats = {"hits": 0, "misses": 0}
+provider_counts = {}
 _cache = None
 
 
@@ -52,6 +54,12 @@ def available_providers():
     if model:
         found.append(Provider("ollama", "http://localhost:11434/v1", "ollama", model))
 
+    wanted = os.getenv("HAVOC_PROVIDERS")
+    if wanted:
+        order = [name.strip() for name in wanted.split(",") if name.strip()]
+        by_name = {p.name: p for p in found}
+        found = [by_name[name] for name in order if name in by_name]
+
     return found
 
 
@@ -78,9 +86,11 @@ def chat(messages, tools=None, temperature=0.0, scope="", use_cache=True):
             reply = client.chat.completions.create(**args)
         except Exception as err:
             last_error = err
+            print(f"[havoc] {p.name} failed: {str(err)[:200]}", file=sys.stderr)
             continue
 
         stats["misses"] += 1
+        provider_counts[p.name] = provider_counts.get(p.name, 0) + 1
         if use_cache:
             get_cache().put(key, p.name, p.model, reply.model_dump(mode="json"))
         return reply

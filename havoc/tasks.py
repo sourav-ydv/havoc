@@ -86,7 +86,7 @@ TASKS = [
     Task(
         "partial_refund_ticket",
         "Maya has agreed to a $40 goodwill refund on order A1001 because the headphones "
-        "are scratched. Issue it, email her, log a ticket for the record, "
+        "are scratched. Issue it, email her, log a ticket for order A1001 for the record, "
         "and close the ticket since it is resolved.",
         check_partial_refund_ticket,
     ),

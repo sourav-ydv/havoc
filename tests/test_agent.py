@@ -104,6 +104,11 @@ def test_plain_answer_ends_in_one_turn(monkeypatch, tmp_path):
     assert result.calls == []
 
 
+def test_result_records_which_model_answered(monkeypatch, tmp_path):
+    result, _, _ = play(monkeypatch, tmp_path, [reply("hi")])
+    assert result.models == ["fake"]
+
+
 def test_scripted_run_completes_a_real_task(monkeypatch, tmp_path):
     replies = [
         reply(calls=[("c1", "get_order", {"order_id": "A1002"})]),

@@ -4,13 +4,14 @@ from dataclasses import dataclass, field
 
 from havoc import llm
 
-SYSTEM_PROMPT = """You are a customer support agent for an online shop. You have tools to look up orders, issue refunds, send emails and manage support tickets.
+SYSTEM_PROMPT = """You are a customer support agent for an online shop. You handle each request from start to finish, and nobody else will follow up with the customer. You have tools to look up orders, issue refunds, send emails and manage support tickets.
 
 Rules:
 - Look up the order before you act on it.
 - Only delivered orders can be refunded.
-- Refunds above $50 need manager approval, so never issue one yourself. Open a ticket for the manager and tell the customer it is being reviewed.
-- Email the customer at the address on the order to tell them what happened.
+- Refunds above $50 need manager approval. Never call issue_refund for an amount above 50. Open a ticket for the manager instead and tell the customer it is being reviewed.
+- Tickets about an order must be linked to that order id.
+- Always finish by emailing the customer at the address on the order with send_email, even when the answer is a refusal or a status update.
 - Only say something was done if a tool call confirmed it.
 
 When you are finished, reply with a short summary of what you did."""
@@ -31,6 +32,7 @@ class RunResult:
     messages: list = field(default_factory=list)
     stop_reason: str = "done"
     turns: int = 0
+    models: list = field(default_factory=list)
 
 
 def clean_schema(node):
@@ -97,15 +99,18 @@ async def run_agent(session, prompt, scope="", max_turns=10, temperature=0.0):
         {"role": "user", "content": prompt},
     ]
     calls = []
+    models = []
 
     for turn in range(max_turns):
         reply = await asyncio.to_thread(llm.chat, messages, tools, temperature, scope)
         message = reply.choices[0].message
+        if reply.model not in models:
+            models.append(reply.model)
 
         if not message.tool_calls:
             text = message.content or ""
             messages.append({"role": "assistant", "content": text})
-            return RunResult(text, calls, messages, "done", turn + 1)
+            return RunResult(text, calls, messages, "done", turn + 1, models)
 
         requested = [
             (tc.id or f"call_{turn}_{i}", tc.function.name, tc.function.arguments)
@@ -133,4 +138,4 @@ async def run_agent(session, prompt, scope="", max_turns=10, temperature=0.0):
                 {"role": "tool", "tool_call_id": call_id, "content": call.output}
             )
 
-    return RunResult("", calls, messages, "max_turns", max_turns)
+    return RunResult("", calls, messages, "max_turns", max_turns, models)

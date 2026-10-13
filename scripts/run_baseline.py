@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import os
 from contextlib import closing
 
 from havoc import llm
@@ -27,7 +28,8 @@ async def main(task_ids, scope, verbose):
         result, ok = await run_task(task, scope)
         passed += ok
         label = "PASS" if ok else "FAIL"
-        print(f"{label}  {task.id:<24} turns={result.turns} tool_calls={len(result.calls)} stop={result.stop_reason}")
+        model = ",".join(result.models)
+        print(f"{label}  {task.id:<24} turns={result.turns} tool_calls={len(result.calls)} stop={result.stop_reason} model={model}")
 
         if verbose or not ok:
             for call in result.calls:
@@ -36,13 +38,17 @@ async def main(task_ids, scope, verbose):
             print(f"      answer: {result.answer[:200]}")
 
     print(f"\n{passed}/{len(tasks)} passed")
-    print(llm.stats)
+    print(llm.stats, llm.provider_counts)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--task", action="append")
-    parser.add_argument("--scope", default="baseline")
+    parser.add_argument("--scope")
+    parser.add_argument("--provider")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
-    asyncio.run(main(args.task, args.scope, args.verbose))
+    if args.provider:
+        os.environ["HAVOC_PROVIDERS"] = args.provider
+    scope = args.scope or args.provider or "baseline"
+    asyncio.run(main(args.task, scope, args.verbose))
