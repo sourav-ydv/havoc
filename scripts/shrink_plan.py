@@ -5,7 +5,7 @@ import os
 from havoc import llm
 from havoc.faults import parse_fault
 from havoc.runner import run_once
-from havoc.shrink import finding_record, investigate, save_finding
+from havoc.shrink import finding_record, investigate, save_finding, summarize_check
 from havoc.tasks import get_task
 
 
@@ -42,8 +42,8 @@ async def main(task_id, specs, scope, trials):
     print(f"{len(result.original)} faults -> {len(result.minimal)} after {result.runs} runs:")
     for fault in result.minimal:
         print("  ", fault.id)
-    if verified:
-        print(f"reproduces in {verified[0]} of {verified[1]} fresh runs at temperature 0.7")
+    for line in summarize_check(verified):
+        print(line)
 
     path = save_finding(
         f".havoc/findings/{scope}",

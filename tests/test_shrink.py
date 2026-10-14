@@ -6,7 +6,7 @@ from helpers import ReactiveLLM
 from havoc import agent
 from havoc.faults import make
 from havoc.runner import run_once
-from havoc.shrink import reproduction_rate, shrink_plan
+from havoc.shrink import classify, investigate, reproduction_rate, shrink_plan, summarize_check
 from havoc.tasks import get_task
 
 TASK = get_task("big_refund_escalated")
@@ -84,3 +84,67 @@ def test_reproduction_rate_is_zero_for_a_harmless_plan(tmp_path):
         reproduction_rate(TASK, [NOISE_MALFORMED], frozenset({"task_check"}), "s", tmp_path, trials=2)
     )
     assert hits == 0
+
+
+def investigate_plan(plan, tmp_path, trials=2):
+    first = outcome(plan, tmp_path)
+    return asyncio.run(investigate(TASK, plan, first, "s", tmp_path, trials))
+
+
+def test_a_compound_failure_is_confirmed_and_pure(tmp_path):
+    result, check = investigate_plan([EMAIL_FAIL_0, EMAIL_FAIL_1, IRRELEVANT_DROP], tmp_path)
+    assert len(result.minimal) == 2
+    assert check["status"] == "confirmed"
+    assert check["pure_compound"] is True
+    assert all(h == 0 for per in check["singles"].values() for h, _ in per.values())
+
+
+def test_a_single_cause_is_not_called_compound(tmp_path):
+    result, check = investigate_plan([CORRUPT, NOISE_MALFORMED], tmp_path)
+    assert result.minimal == [CORRUPT]
+    assert check["status"] == "confirmed"
+    assert check["pure_compound"] is False
+    assert check["singles"] == {}
+
+
+def test_rates_are_reported_for_both_temperatures(tmp_path):
+    _, check = investigate_plan([CORRUPT], tmp_path)
+    assert set(check["rates"]) == {0.0, 0.7}
+
+
+def test_summary_lines_mention_the_status(tmp_path):
+    _, check = investigate_plan([EMAIL_FAIL_0, EMAIL_FAIL_1], tmp_path)
+    text = "\n".join(summarize_check(check))
+    assert "pure compound" in text
+    assert "confirmed" in text
+
+
+def test_no_check_gives_no_lines():
+    assert summarize_check(None) == []
+
+
+def test_zero_hits_is_unconfirmed():
+    verdict = classify({0.0: (0, 3), 0.7: (0, 3)}, {}, 2)
+    assert verdict["status"] == "unconfirmed"
+
+
+def test_failing_only_under_sampling_is_flaky():
+    verdict = classify({0.0: (0, 3), 0.7: (1, 3)}, {}, 1)
+    assert verdict["status"] == "flaky"
+
+
+def test_steady_failure_at_temperature_zero_is_confirmed():
+    verdict = classify({0.0: (3, 3), 0.7: (1, 3)}, {}, 1)
+    assert verdict["status"] == "confirmed"
+
+
+def test_a_pair_where_one_fault_also_fails_alone_is_not_pure():
+    singles = {"a": {0.0: (0, 3), 0.7: (1, 3)}, "b": {0.0: (0, 3), 0.7: (0, 3)}}
+    verdict = classify({0.0: (3, 3), 0.7: (3, 3)}, singles, 2)
+    assert verdict["pure_compound"] is False
+
+
+def test_a_pair_where_neither_fails_alone_is_pure():
+    singles = {"a": {0.0: (0, 3), 0.7: (0, 3)}, "b": {0.0: (0, 3), 0.7: (0, 3)}}
+    verdict = classify({0.0: (3, 3), 0.7: (3, 3)}, singles, 2)
+    assert verdict["pure_compound"] is True

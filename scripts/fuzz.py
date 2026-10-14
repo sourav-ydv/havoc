@@ -6,7 +6,7 @@ import random
 from havoc import llm
 from havoc.generate import fault_universe, retry_pairs, sample_plans
 from havoc.runner import run_once
-from havoc.shrink import finding_record, investigate, save_finding
+from havoc.shrink import finding_record, investigate, save_finding, summarize_check
 from havoc.tasks import get_task
 
 
@@ -68,9 +68,10 @@ async def fuzz(task_id, size, count, seed, scope, kinds, trials, max_runs, shrin
             seen.add(key)
 
             kind = "COMPOUND" if len(result.minimal) >= 2 else "single"
-            rate = f"{verified[0]}/{verified[1]}" if verified else "n/a"
             print(f"        minimal ({kind}, {len(result.original)} -> {len(result.minimal)}): {label(result.minimal)}")
-            print(f"        reproduces {rate}, shrink runs {result.runs}")
+            print(f"        shrink runs: {result.runs}")
+            for line in summarize_check(verified):
+                print(f"        {line}")
             findings.append((plan, outcome, result, verified))
             name = f"{task_id}-{len(findings):02d}"
             save_finding(
@@ -83,8 +84,8 @@ async def fuzz(task_id, size, count, seed, scope, kinds, trials, max_runs, shrin
 
     print()
     print(f"{len(findings)} distinct failures")
-    compound = [f for f in findings if f[2] and len(f[2].minimal) >= 2]
-    print(f"{len(compound)} needed two or more faults")
+    compound = [f for f in findings if f[3] and f[3]["pure_compound"] and f[3]["status"] != "unconfirmed"]
+    print(f"{len(compound)} pure compound failures that reproduced at least once")
     print(llm.stats, llm.provider_counts)
     return findings
 

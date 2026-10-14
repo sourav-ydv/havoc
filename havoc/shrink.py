@@ -111,15 +111,68 @@ def timestamp():
     return time.strftime("%Y%m%d-%H%M%S")
 
 
+TEMPERATURES = (0.0, 0.7)
+
+
+async def verify(task, minimal, target, scope, workdir, trials, temperatures=TEMPERATURES, runner=run_once):
+    rates = {}
+    for temp in temperatures:
+        rates[temp] = await reproduction_rate(
+            task, minimal, target, f"{scope}-t{temp}", workdir, trials, temp, runner
+        )
+
+    singles = {}
+    if len(minimal) >= 2:
+        for fault in minimal:
+            singles[fault.id] = {}
+            for temp in temperatures:
+                singles[fault.id][temp] = await reproduction_rate(
+                    task, [fault], target, f"{scope}-t{temp}", workdir, trials, temp, runner
+                )
+    return rates, singles
+
+
+def classify(rates, singles, minimal_size):
+    steady = rates.get(0.0, (0, 1))
+    anywhere = any(hits for hits, _ in rates.values())
+    if steady[0] * 2 >= steady[1] and steady[1]:
+        status = "confirmed"
+    elif anywhere:
+        status = "flaky"
+    else:
+        status = "unconfirmed"
+    alone = any(hits for per in singles.values() for hits, _ in per.values())
+    return {
+        "status": status,
+        "pure_compound": minimal_size >= 2 and bool(singles) and not alone,
+    }
+
+
 async def investigate(task, plan, outcome, scope, workdir, trials, runner=run_once):
     target = outcome.signature
     result = await shrink_plan(task, plan, target, scope, workdir, runner)
-    verified = None
+    check = None
     if result.reproduced and result.minimal and not result.fails_without_faults:
-        verified = await reproduction_rate(
+        rates, singles = await verify(
             task, result.minimal, target, scope, workdir, trials, runner=runner
         )
-    return result, verified
+        check = {"rates": rates, "singles": singles}
+        check.update(classify(rates, singles, len(result.minimal)))
+    return result, check
+
+
+def summarize_check(check):
+    if not check:
+        return []
+    lines = []
+    shown = ", ".join(f"temp {t}: {h}/{n}" for t, (h, n) in check["rates"].items())
+    lines.append(f"fresh runs that fail again: {shown}")
+    for fault_id, per in check["singles"].items():
+        alone = ", ".join(f"temp {t}: {h}/{n}" for t, (h, n) in per.items())
+        lines.append(f"on its own ({fault_id}): {alone}")
+    kind = "pure compound" if check["pure_compound"] else "not a pure compound"
+    lines.append(f"status: {check['status']}, {kind}")
+    return lines
 
 
 def finding_record(task, scope, outcome, result, verified, extra=None):
@@ -136,8 +189,18 @@ def finding_record(task, scope, outcome, result, verified, extra=None):
         "fails_without_faults": result.fails_without_faults,
         "shrink_runs": result.runs,
         "history": [{"faults": ids, "reproduced": hit} for ids, hit in result.history],
-        "reproduction": (
-            {"hits": verified[0], "trials": verified[1]} if verified else None
+        "verification": (
+            {
+                "status": verified["status"],
+                "pure_compound": verified["pure_compound"],
+                "rates": {str(t): {"hits": h, "trials": n} for t, (h, n) in verified["rates"].items()},
+                "singles": {
+                    fid: {str(t): {"hits": h, "trials": n} for t, (h, n) in per.items()}
+                    for fid, per in verified["singles"].items()
+                },
+            }
+            if verified
+            else None
         ),
         "failing_trace": outcome.trace,
         "answer": outcome.result.answer,
