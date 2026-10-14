@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from havoc.faults import Fault
 from havoc.generate import fault_universe, retry_pairs, sample_plans
 from havoc.runner import run_once
-from havoc.shrink import investigate
+from havoc.shrink import TEMPERATURES, investigate
 from havoc.stats import fisher_exact, wilson
 from havoc.tasks import get_task
 
@@ -100,7 +100,10 @@ async def run_discovery(task_ids, budget, scope, seed, store, workdir, kinds=Non
             log(f"{task_id} {strategy}: {fresh} new runs, {len(plans) - fresh} already done")
 
 
-async def run_analysis(task_ids, scope, runs_store, analysis_store, trials, workdir, runner=run_once, log=print):
+async def run_analysis(
+    task_ids, scope, runs_store, analysis_store, trials, workdir, runner=run_once, log=print,
+    temperatures=TEMPERATURES,
+):
     runs = [r for r in runs_store.load() if r.get("type") == "run"]
     analyzed = {(a["task"], a["key"]) for a in analysis_store.load()}
 
@@ -134,7 +137,8 @@ async def run_analysis(task_ids, scope, runs_store, analysis_store, trials, work
 
         task = get_task(r["task"])
         result, check = await investigate(
-            task, plan, SimpleNamespace(signature=signature), scope, workdir, trials, runner
+            task, plan, SimpleNamespace(signature=signature), scope, workdir, trials, runner,
+            temperatures,
         )
         record = {
             "type": "analysis",

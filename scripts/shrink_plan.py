@@ -15,7 +15,7 @@ def root_cause(err):
     return err
 
 
-async def main(task_id, specs, scope, trials):
+async def main(task_id, specs, scope, trials, temperatures=(0.0, 0.7)):
     task = get_task(task_id)
     plan = [parse_fault(s) for s in specs]
     workdir = f".havoc/runs/{scope}-shrink"
@@ -27,7 +27,9 @@ async def main(task_id, specs, scope, trials):
             return
 
         print("plan fails with:", ", ".join(sorted(outcome.signature)))
-        result, verified = await investigate(task, plan, outcome, scope, workdir, trials)
+        result, verified = await investigate(
+            task, plan, outcome, scope, workdir, trials, temperatures=temperatures
+        )
     except Exception as err:
         print(f"ERROR: {root_cause(err)}")
         return
@@ -61,8 +63,10 @@ if __name__ == "__main__":
     parser.add_argument("--provider")
     parser.add_argument("--scope")
     parser.add_argument("--trials", type=int, default=3)
+    parser.add_argument("--temps", default="0.0,0.7")
     args = parser.parse_args()
     if args.provider:
         os.environ["HAVOC_PROVIDERS"] = args.provider
     scope = args.scope or args.provider or "baseline"
-    asyncio.run(main(args.task, args.fault, scope, args.trials))
+    temps = tuple(float(x) for x in args.temps.split(","))
+    asyncio.run(main(args.task, args.fault, scope, args.trials, temps))

@@ -133,7 +133,7 @@ async def verify(task, minimal, target, scope, workdir, trials, temperatures=TEM
 
 
 def classify(rates, singles, minimal_size):
-    steady = rates.get(0.0, (0, 1))
+    steady = rates[min(rates)] if rates else (0, 1)
     anywhere = any(hits for hits, _ in rates.values())
     if steady[0] * 2 >= steady[1] and steady[1]:
         status = "confirmed"
@@ -148,13 +148,15 @@ def classify(rates, singles, minimal_size):
     }
 
 
-async def investigate(task, plan, outcome, scope, workdir, trials, runner=run_once):
+async def investigate(
+    task, plan, outcome, scope, workdir, trials, runner=run_once, temperatures=TEMPERATURES
+):
     target = outcome.signature
     result = await shrink_plan(task, plan, target, scope, workdir, runner)
     check = None
     if result.reproduced and result.minimal and not result.fails_without_faults:
         rates, singles = await verify(
-            task, result.minimal, target, scope, workdir, trials, runner=runner
+            task, result.minimal, target, scope, workdir, trials, temperatures, runner
         )
         check = {"rates": rates, "singles": singles}
         check.update(classify(rates, singles, len(result.minimal)))

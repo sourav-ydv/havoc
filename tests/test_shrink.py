@@ -148,3 +148,16 @@ def test_a_pair_where_neither_fails_alone_is_pure():
     singles = {"a": {0.0: (0, 3), 0.7: (0, 3)}, "b": {0.0: (0, 3), 0.7: (0, 3)}}
     verdict = classify({0.0: (3, 3), 0.7: (3, 3)}, singles, 2)
     assert verdict["pure_compound"] is True
+
+
+def test_classify_uses_the_lowest_temperature_that_was_run():
+    verdict = classify({0.7: (3, 3)}, {}, 1)
+    assert verdict["status"] == "confirmed"
+
+
+def test_only_the_asked_temperatures_are_run(tmp_path):
+    first = outcome([CORRUPT], tmp_path)
+    _, check = asyncio.run(
+        investigate(TASK, [CORRUPT], first, "s", tmp_path, 2, temperatures=(0.7,))
+    )
+    assert set(check["rates"]) == {0.7}

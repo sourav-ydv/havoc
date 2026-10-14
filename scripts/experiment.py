@@ -67,6 +67,7 @@ async def do_analyze(args, scope, where):
         await run_analysis(
             task_list(args.tasks), scope, where["runs"], where["analysis"],
             args.trials, f".havoc/runs/{scope}-exp-{args.name}",
+            temperatures=tuple(float(x) for x in args.temps.split(",")),
         )
     except Exception as err:
         print(f"\nstopped early: {root_cause(err)}")
@@ -92,6 +93,7 @@ if __name__ == "__main__":
     parser.add_argument("--kinds")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--trials", type=int, default=5)
+    parser.add_argument("--temps", default="0.0,0.7")
     args = parser.parse_args()
 
     if args.provider:
