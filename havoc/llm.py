@@ -82,7 +82,7 @@ def chat(messages, tools=None, temperature=0.0, scope="", use_cache=True):
         hit = get_cache().get(key)
         if hit is not None:
             stats["hits"] += 1
-            return ChatCompletion.model_validate(hit)
+            return ChatCompletion.construct(**hit)
 
     providers = available_providers()
     if not providers:
