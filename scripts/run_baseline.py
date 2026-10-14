@@ -1,13 +1,9 @@
 import argparse
 import asyncio
 import os
-from contextlib import closing
 
 from havoc import llm
-from havoc.agent import run_agent
-from havoc.proxy.intercept import load_trace
-from havoc.sandbox import state
-from havoc.sandbox.session import open_session
+from havoc.runner import run_once
 from havoc.tasks import TASKS, get_task
 
 
@@ -17,39 +13,38 @@ def root_cause(err):
     return err
 
 
-async def run_task(task, scope):
-    db_path = f".havoc/baseline/{task.id}.db"
-    trace_path = f".havoc/traces/{scope}/{task.id}.jsonl"
-    state.reset(db_path)
-    async with open_session(db_path, trace_path) as session:
-        result = await run_agent(session, task.prompt, scope=scope)
-    with closing(state.connect(db_path)) as db:
-        snap = state.snapshot(db)
-    return result, task.check(snap), len(load_trace(trace_path))
-
-
 async def main(task_ids, scope, verbose):
     tasks = [get_task(t) for t in task_ids] if task_ids else TASKS
     passed = 0
 
     for task in tasks:
         try:
-            result, ok, traced = await run_task(task, scope)
+            outcome = await run_once(task, scope=scope, workdir=f".havoc/runs/{scope}")
         except Exception as err:
             print(f"ERROR {task.id}: {root_cause(err)}")
             return
-        passed += ok
-        label = "PASS" if ok else "FAIL"
-        model = ",".join(result.models)
-        print(f"{label}  {task.id:<24} turns={result.turns} tool_calls={len(result.calls)} traced={traced} stop={result.stop_reason} model={model}")
 
-        if verbose or not ok:
+        result = outcome.result
+        passed += not outcome.failed
+        label = "FAIL" if outcome.failed else "PASS"
+        model = ",".join(result.models)
+        print(
+            f"{label}  {task.id:<24} turns={result.turns} tool_calls={len(result.calls)} "
+            f"traced={len(outcome.trace)} violations={len(outcome.violations)} "
+            f"stop={result.stop_reason} model={model}"
+        )
+
+        if verbose or outcome.failed:
             for call in result.calls:
                 flag = "ERR" if call.is_error else "ok "
                 print(f"      {flag} {call.name}({call.args}) -> {call.output[:120]}")
+            if not outcome.task_ok:
+                print("      task check failed")
+            for violation in outcome.violations:
+                print(f"      VIOLATION {violation.invariant}: {violation.message}")
             print(f"      answer: {result.answer[:200]}")
 
-    print(f"\n{passed}/{len(tasks)} passed")
+    print(f"\n{passed}/{len(tasks)} clean")
     print(llm.stats, llm.provider_counts)
 
 

@@ -1,13 +1,9 @@
 import argparse
 import asyncio
 import os
-from contextlib import closing
 
-from havoc.agent import run_agent
 from havoc.faults import parse_fault
-from havoc.proxy.intercept import load_trace
-from havoc.sandbox import state
-from havoc.sandbox.session import open_session
+from havoc.runner import run_once
 from havoc.tasks import get_task
 
 
@@ -17,48 +13,52 @@ def root_cause(err):
     return err
 
 
+def one_line(text, limit=140):
+    return " ".join(text.split())[:limit]
+
+
 async def main(task_id, specs, scope):
     task = get_task(task_id)
     faults = [parse_fault(spec) for spec in specs]
-    db_path = f".havoc/faulted/{task.id}.db"
-    trace_path = f".havoc/traces/{scope}-faulted/{task.id}.jsonl"
-
-    state.reset(db_path)
     try:
-        async with open_session(db_path, trace_path, faults) as session:
-            result = await run_agent(session, task.prompt, scope=scope)
+        outcome = await run_once(
+            task, faults, scope=scope, workdir=f".havoc/runs/{scope}-faulted"
+        )
     except Exception as err:
         print(f"ERROR: {root_cause(err)}")
         return
 
-    with closing(state.connect(db_path)) as db:
-        snap = state.snapshot(db)
-    records = load_trace(trace_path)
-
+    snap = outcome.snapshot
     print(f"task: {task.id}")
     print("faults planned:", ", ".join(f.id for f in faults) or "none")
     print()
-    for record in records:
+    for record in outcome.trace:
         tags = " ".join(
             f"[{f['id']}{'' if f['applied'] else ' (not applicable)'}]" for f in record["faults"]
         )
         flag = "ERR" if record["is_error"] else "ok "
-        text = record["response"]["content"][0]["text"] if record["response"].get("content") else str(record["response"])
+        response = record["response"]
+        text = response["content"][0]["text"] if response.get("content") else str(response)
         print(f"  {record['seq']}. {flag} {record['tool']}({record['args']}) {tags}")
-        print(f"       -> {text[:140]}")
+        print(f"       -> {one_line(text)}")
 
-    fired = {f["id"] for r in records for f in r["faults"]}
-    missed = [f.id for f in faults if f.id not in fired]
+    missed = [f.id for f in faults if f.id not in outcome.fired]
     print()
-    print("faults that fired:", ", ".join(sorted(fired)) or "none")
+    print("faults that fired:", ", ".join(sorted(outcome.fired)) or "none")
     print("faults that never fired:", ", ".join(missed) or "none")
     print()
     print("refunds :", [(r["order_id"], r["amount"]) for r in snap["refunds"]])
     print("emails  :", [(e["to_addr"], e["subject"]) for e in snap["emails"]])
     print("tickets :", [(t["id"], t["order_id"], t["status"]) for t in snap["tickets"]])
     print()
-    print("task check:", "PASS" if task.check(snap) else "FAIL")
-    print("agent said:", result.answer[:300])
+    print("run ended:", outcome.result.stop_reason, f"after {outcome.result.turns} turns")
+    print("task check:", "PASS" if outcome.task_ok else "FAIL")
+    if outcome.violations:
+        for v in outcome.violations:
+            print(f"VIOLATION {v.invariant}: {v.message}")
+    else:
+        print("violations: none")
+    print("agent said:", one_line(outcome.result.answer, 300))
 
 
 if __name__ == "__main__":
