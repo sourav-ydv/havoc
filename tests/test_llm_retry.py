@@ -82,7 +82,15 @@ def test_retry_after_header_sets_the_wait(isolated):
 def test_wait_is_capped(isolated):
     ScriptedClient.outcomes = [HttpError(429, {"retry-after": "900"}), completion()]
     llm.chat(MESSAGES)
-    assert isolated == [30.0]
+    assert isolated == [llm.MAX_WAIT]
+
+
+def test_delay_named_in_the_error_message_is_used(isolated):
+    err = HttpError(429)
+    err.args = ("Quota exceeded. Please retry in 53.5s. More text",)
+    ScriptedClient.outcomes = [err, completion()]
+    llm.chat(MESSAGES)
+    assert isolated == [pytest.approx(53.5)]
 
 
 def test_gives_up_after_max_retries(isolated):

@@ -1,5 +1,8 @@
+import collections
 import os
+import re
 import sys
+import threading
 import time
 from dataclasses import dataclass
 
@@ -12,10 +15,53 @@ from havoc.cache import Cache, make_key
 load_dotenv()
 
 MAX_RETRIES = 3
+MAX_WAIT = 90.0
+DEFAULT_RPM = {"gemini": 12, "groq": 8}
+RETRY_HINT = re.compile(r"retry(?: in |Delay'?: '?)([0-9]+(?:\.[0-9]+)?)s", re.I)
 
 stats = {"hits": 0, "misses": 0}
 provider_counts = {}
 _cache = None
+_pacers = {}
+
+
+class Pacer:
+    def __init__(self, limit, window=60.0, clock=time.monotonic, sleep=time.sleep):
+        self.limit = limit
+        self.window = window
+        self.clock = clock
+        self.sleep = sleep
+        self.stamps = collections.deque()
+        self.lock = threading.Lock()
+
+    def wait(self):
+        if not self.limit:
+            return 0.0
+        waited = 0.0
+        with self.lock:
+            while True:
+                now = self.clock()
+                while self.stamps and now - self.stamps[0] >= self.window:
+                    self.stamps.popleft()
+                if len(self.stamps) < self.limit:
+                    self.stamps.append(now)
+                    return waited
+                pause = self.window - (now - self.stamps[0])
+                self.sleep(pause)
+                waited += pause
+
+
+def limit_for(name):
+    raw = os.getenv(f"{name.upper()}_RPM")
+    if raw is not None and raw.strip():
+        return int(raw)
+    return DEFAULT_RPM.get(name, 0)
+
+
+def get_pacer(name):
+    if name not in _pacers:
+        _pacers[name] = Pacer(limit_for(name))
+    return _pacers[name]
 
 
 @dataclass
@@ -72,7 +118,10 @@ def backoff_seconds(err, attempt):
         hinted = float(headers.get("retry-after", ""))
     except (TypeError, ValueError):
         hinted = 0.0
-    return min(hinted or 2 ** (attempt + 1), 30.0)
+    if not hinted:
+        found = RETRY_HINT.search(str(err))
+        hinted = float(found.group(1)) if found else 0.0
+    return min(hinted or 2 ** (attempt + 1), MAX_WAIT)
 
 
 def chat(messages, tools=None, temperature=0.0, scope="", use_cache=True):
@@ -97,6 +146,7 @@ def chat(messages, tools=None, temperature=0.0, scope="", use_cache=True):
 
         reply = None
         for attempt in range(MAX_RETRIES + 1):
+            get_pacer(p.name).wait()
             try:
                 reply = client.chat.completions.create(**args)
                 break
