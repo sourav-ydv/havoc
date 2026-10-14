@@ -106,3 +106,34 @@ def test_other_errors_are_not_retried(isolated):
         llm.chat(MESSAGES)
     assert ScriptedClient.calls == 1
     assert isolated == []
+
+
+class APIConnectionError(Exception):
+    pass
+
+
+def test_connection_errors_are_retried(isolated):
+    ScriptedClient.outcomes = [APIConnectionError("Connection error."), completion()]
+    reply = llm.chat(MESSAGES)
+    assert reply.choices[0].message.content == "ok"
+    assert ScriptedClient.calls == 2
+
+
+def test_server_errors_are_retried(isolated):
+    ScriptedClient.outcomes = [HttpError(503), completion()]
+    llm.chat(MESSAGES)
+    assert ScriptedClient.calls == 2
+
+
+def test_client_errors_other_than_429_are_not_retried(isolated):
+    ScriptedClient.outcomes = [HttpError(401)]
+    with pytest.raises(RuntimeError):
+        llm.chat(MESSAGES)
+    assert ScriptedClient.calls == 1
+
+
+def test_unknown_exceptions_are_not_retried(isolated):
+    ScriptedClient.outcomes = [ValueError("bad")]
+    with pytest.raises(RuntimeError):
+        llm.chat(MESSAGES)
+    assert ScriptedClient.calls == 1

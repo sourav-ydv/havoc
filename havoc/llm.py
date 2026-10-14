@@ -14,7 +14,9 @@ from havoc.cache import Cache, make_key
 
 load_dotenv()
 
-MAX_RETRIES = 3
+MAX_RETRIES = 5
+RETRY_STATUS = {429, 500, 502, 503, 504}
+TRANSIENT_NAMES = {"APIConnectionError", "APITimeoutError", "ConnectError", "ReadTimeout", "TimeoutError"}
 MAX_WAIT = 90.0
 DEFAULT_RPM = {"gemini": 12, "groq": 8}
 RETRY_HINT = re.compile(r"retry(?: in |Delay'?: '?)([0-9]+(?:\.[0-9]+)?)s", re.I)
@@ -112,6 +114,13 @@ def available_providers():
     return found
 
 
+def is_transient(err):
+    status = getattr(err, "status_code", None)
+    if status is not None:
+        return status in RETRY_STATUS
+    return type(err).__name__ in TRANSIENT_NAMES
+
+
 def backoff_seconds(err, attempt):
     headers = getattr(getattr(err, "response", None), "headers", None) or {}
     try:
@@ -152,9 +161,10 @@ def chat(messages, tools=None, temperature=0.0, scope="", use_cache=True):
                 break
             except Exception as err:
                 last_error = err
-                if getattr(err, "status_code", None) == 429 and attempt < MAX_RETRIES:
+                if is_transient(err) and attempt < MAX_RETRIES:
                     wait = backoff_seconds(err, attempt)
-                    print(f"[havoc] {p.name} rate limited, waiting {wait:.0f}s", file=sys.stderr)
+                    kind = "rate limited" if getattr(err, "status_code", None) == 429 else "had a temporary error"
+                    print(f"[havoc] {p.name} {kind}, waiting {wait:.0f}s", file=sys.stderr)
                     time.sleep(wait)
                     continue
                 print(f"[havoc] {p.name} failed: {str(err)[:200]}", file=sys.stderr)
