@@ -35,7 +35,9 @@ class Outcome:
         return {f["id"] for record in self.trace for f in record["faults"]}
 
 
-async def run_once(task, faults=(), scope="baseline", workdir=".havoc/runs", tag=None):
+async def run_once(
+    task, faults=(), scope="baseline", workdir=".havoc/runs", tag=None, temperature=0.0
+):
     name = tag or task.id
     db_path = Path(workdir) / f"{name}.db"
     trace_path = Path(workdir) / f"{name}.jsonl"
@@ -43,7 +45,9 @@ async def run_once(task, faults=(), scope="baseline", workdir=".havoc/runs", tag
 
     state.reset(db_path)
     async with open_session(db_path, trace_path, plan or None) as session:
-        result = await run_agent(session, task.prompt, scope=scope)
+        result = await run_agent(
+            session, task.prompt, scope=scope, temperature=temperature
+        )
 
     with closing(state.connect(db_path)) as db:
         snapshot = state.snapshot(db)
