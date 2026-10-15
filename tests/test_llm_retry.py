@@ -164,3 +164,20 @@ def test_a_short_retry_delay_is_still_waited_out(isolated):
     ScriptedClient.outcomes = [err, completion()]
     llm.chat(MESSAGES)
     assert isolated == [pytest.approx(40.0)]
+
+
+def test_quota_delay_reads_the_wait_from_the_message():
+    err = HttpError(429)
+    err.args = ("PerDay limit hit, 'retryDelay': '75372s'",)
+    assert llm.quota_delay(err) == 75372.0
+
+
+def test_quota_delay_is_none_for_other_errors():
+    assert llm.quota_delay(HttpError(500)) is None
+    assert llm.quota_delay(ValueError("x")) is None
+
+
+def test_quota_delay_is_none_for_a_short_rate_limit():
+    err = HttpError(429)
+    err.args = ("slow down, 'retryDelay': '20s'",)
+    assert llm.quota_delay(err) is None

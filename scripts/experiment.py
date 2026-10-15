@@ -47,6 +47,24 @@ def task_list(text):
     return text.split(",") if text else [t.id for t in TASKS]
 
 
+async def attempt(action, args):
+    while True:
+        try:
+            await action()
+            return True
+        except Exception as err:
+            cause = root_cause(err)
+            print(f"\nstopped early: {cause}")
+            delay = llm.quota_delay(cause)
+            if not args.wait or delay is None:
+                explain(cause)
+                return False
+            hours = delay / 3600
+            print(f"waiting about {hours:.1f} hours for the quota, leave this window open")
+            await asyncio.sleep(delay + 120)
+            print("trying again")
+
+
 async def do_run(args, scope, where):
     budget = parse_budget(args.budget)
     kinds = set(args.kinds.split(",")) if args.kinds else None
@@ -60,27 +78,25 @@ async def do_run(args, scope, where):
         ),
         encoding="utf-8",
     )
-    try:
-        await run_discovery(
+    await attempt(
+        lambda: run_discovery(
             tasks, budget, scope, args.seed, where["runs"],
             f".havoc/runs/{scope}-exp-{args.name}", kinds,
-        )
-    except Exception as err:
-        print(f"\nstopped early: {root_cause(err)}")
-        explain(root_cause(err))
+        ),
+        args,
+    )
     print(llm.stats, llm.provider_counts)
 
 
 async def do_analyze(args, scope, where):
-    try:
-        await run_analysis(
+    await attempt(
+        lambda: run_analysis(
             task_list(args.tasks), scope, where["runs"], where["analysis"],
             args.trials, f".havoc/runs/{scope}-exp-{args.name}",
             temperatures=tuple(float(x) for x in args.temps.split(",")),
-        )
-    except Exception as err:
-        print(f"\nstopped early: {root_cause(err)}")
-        explain(root_cause(err))
+        ),
+        args,
+    )
     print(llm.stats, llm.provider_counts)
 
 
@@ -103,6 +119,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--trials", type=int, default=5)
     parser.add_argument("--temps", default="0.0,0.7")
+    parser.add_argument("--wait", action="store_true")
     args = parser.parse_args()
 
     if args.provider:

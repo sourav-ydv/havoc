@@ -149,6 +149,13 @@ def quota_exhausted(err):
     return bool(found and float(found.group(1)) > 600)
 
 
+def quota_delay(err):
+    if not quota_exhausted(err):
+        return None
+    found = RETRY_HINT.search(str(err))
+    return float(found.group(1)) if found else None
+
+
 def is_transient(err):
     status = getattr(err, "status_code", None)
     if status is not None:
