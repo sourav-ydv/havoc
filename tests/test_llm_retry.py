@@ -137,3 +137,30 @@ def test_unknown_exceptions_are_not_retried(isolated):
     with pytest.raises(RuntimeError):
         llm.chat(MESSAGES)
     assert ScriptedClient.calls == 1
+
+
+def test_a_daily_quota_error_is_not_retried(isolated):
+    err = HttpError(429)
+    err.args = ("Quota exceeded for metric GenerateRequestsPerDayPerProjectPerModel-FreeTier",)
+    ScriptedClient.outcomes = [err]
+    with pytest.raises(RuntimeError):
+        llm.chat(MESSAGES)
+    assert ScriptedClient.calls == 1
+    assert isolated == []
+
+
+def test_a_very_long_retry_delay_is_treated_as_exhausted(isolated):
+    err = HttpError(429)
+    err.args = ("rate limited, 'retryDelay': '14683s'",)
+    ScriptedClient.outcomes = [err]
+    with pytest.raises(RuntimeError):
+        llm.chat(MESSAGES)
+    assert ScriptedClient.calls == 1
+
+
+def test_a_short_retry_delay_is_still_waited_out(isolated):
+    err = HttpError(429)
+    err.args = ("rate limited, 'retryDelay': '40s'",)
+    ScriptedClient.outcomes = [err, completion()]
+    llm.chat(MESSAGES)
+    assert isolated == [pytest.approx(40.0)]

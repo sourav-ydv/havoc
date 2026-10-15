@@ -139,6 +139,16 @@ def available_providers():
     return found
 
 
+def quota_exhausted(err):
+    if getattr(err, "status_code", None) != 429:
+        return False
+    text = str(err)
+    if "PerDay" in text:
+        return True
+    found = RETRY_HINT.search(text)
+    return bool(found and float(found.group(1)) > 600)
+
+
 def is_transient(err):
     status = getattr(err, "status_code", None)
     if status is not None:
@@ -191,6 +201,9 @@ def chat(messages, tools=None, temperature=0.0, scope="", use_cache=True):
                 break
             except Exception as err:
                 last_error = err
+                if quota_exhausted(err):
+                    print(f"[havoc] {p.name} has used up its quota for now", file=sys.stderr)
+                    break
                 if is_transient(err) and attempt < MAX_RETRIES:
                     wait = backoff_seconds(err, attempt)
                     kind = "rate limited" if getattr(err, "status_code", None) == 429 else "had a temporary error"

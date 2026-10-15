@@ -24,6 +24,15 @@ def root_cause(err):
     return err
 
 
+def explain(err):
+    text = str(err)
+    if "PerDay" in text:
+        print("the free daily quota for this model is used up, it resets once a day.")
+        print("run the same command again later, nothing is lost")
+    else:
+        print("everything so far is saved, run the same command again to continue")
+
+
 def locations(name):
     root = Path(".havoc/experiments") / name
     return {
@@ -58,7 +67,7 @@ async def do_run(args, scope, where):
         )
     except Exception as err:
         print(f"\nstopped early: {root_cause(err)}")
-        print("everything so far is saved, run the same command again to continue")
+        explain(root_cause(err))
     print(llm.stats, llm.provider_counts)
 
 
@@ -71,7 +80,7 @@ async def do_analyze(args, scope, where):
         )
     except Exception as err:
         print(f"\nstopped early: {root_cause(err)}")
-        print("everything so far is saved, run the same command again to continue")
+        explain(root_cause(err))
     print(llm.stats, llm.provider_counts)
 
 
