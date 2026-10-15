@@ -1,0 +1,14 @@
+[
+  {
+    "tool": "issue_refund",
+    "nth": 0,
+    "kind": "fail_before",
+    "params": {}
+  },
+  {
+    "tool": "issue_refund",
+    "nth": 1,
+    "kind": "fail_before",
+    "params": {}
+  }
+]
