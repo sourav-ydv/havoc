@@ -4,6 +4,7 @@ import re
 import sys
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
@@ -25,6 +26,8 @@ stats = {"hits": 0, "misses": 0}
 provider_counts = {}
 _cache = None
 _pacers = {}
+recorder = None
+_offline = False
 
 
 class Pacer:
@@ -72,6 +75,28 @@ class Provider:
     base_url: str
     api_key: str
     model: str
+
+
+@contextmanager
+def record_calls():
+    global recorder
+    entries = []
+    recorder = entries
+    try:
+        yield entries
+    finally:
+        recorder = None
+
+
+@contextmanager
+def replay_from(cache):
+    global _cache, _offline
+    saved = (_cache, _offline)
+    _cache, _offline = cache, True
+    try:
+        yield
+    finally:
+        _cache, _offline = saved
 
 
 def get_cache():
@@ -140,7 +165,12 @@ def chat(messages, tools=None, temperature=0.0, scope="", use_cache=True):
         hit = get_cache().get(key)
         if hit is not None:
             stats["hits"] += 1
+            if recorder is not None:
+                recorder.append({"key": key, "body": hit})
             return ChatCompletion.construct(**hit)
+
+    if _offline:
+        raise RuntimeError("replay needed a model call that is not in the cassette")
 
     providers = available_providers()
     if not providers:
@@ -175,8 +205,11 @@ def chat(messages, tools=None, temperature=0.0, scope="", use_cache=True):
 
         stats["misses"] += 1
         provider_counts[p.name] = provider_counts.get(p.name, 0) + 1
+        body = reply.model_dump(mode="json")
         if use_cache:
-            get_cache().put(key, p.name, p.model, reply.model_dump(mode="json"))
+            get_cache().put(key, p.name, p.model, body)
+        if recorder is not None:
+            recorder.append({"key": key, "body": body})
         return reply
 
     raise RuntimeError(f"every provider failed, last error: {last_error}")
