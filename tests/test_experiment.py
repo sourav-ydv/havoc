@@ -6,6 +6,7 @@ import pytest
 
 from havoc.experiment import (
     build_plans,
+    failure_class,
     parse_budget,
     plan_key,
     render_markdown,
@@ -206,3 +207,36 @@ def test_markdown_mentions_the_pure_compound_failure(tmp_path):
     assert "pure compound failures" in text
     assert EMAIL_A in text and EMAIL_B in text
     assert "Fisher" in text
+
+
+def test_failure_classes():
+    assert failure_class(["task_check"]) == "incomplete"
+    assert failure_class(["task_check", "retry_storm"]) == "runaway"
+    assert failure_class(["retry_storm", "answer_matches_state"]) == "unsafe"
+    assert failure_class(["email_recipients"]) == "unsafe"
+    assert failure_class(["clean_termination"]) == "runaway"
+
+
+def test_summary_counts_failures_by_class(tmp_path):
+    store, analysis = full_study(tmp_path)
+    summary = summarize(store.load(), analysis.load())
+    assert summary["by_class"]["single"] == {"incomplete": 1}
+
+
+def test_markdown_has_a_table_of_failure_kinds(tmp_path):
+    store, analysis = full_study(tmp_path)
+    text = render_markdown(summarize(store.load(), analysis.load()))
+    assert "## Kinds of failure" in text
+    assert "| single | 0 | 0 | 1 |" in text
+
+
+def test_pure_compound_entries_show_their_class(tmp_path):
+    store, analysis = full_study(tmp_path)
+    text = render_markdown(summarize(store.load(), analysis.load()))
+    assert "(incomplete)" in text
+
+
+def test_summary_counts_failures_that_shrank_to_one_fault(tmp_path):
+    store, analysis = full_study(tmp_path)
+    summary = summarize(store.load(), analysis.load())
+    assert summary["reduced_to_single"] == 0
