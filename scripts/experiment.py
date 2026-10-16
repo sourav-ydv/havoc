@@ -95,6 +95,7 @@ async def do_analyze(args, scope, where):
             task_list(args.tasks), scope, where["runs"], where["analysis"],
             args.trials, f".havoc/runs/{scope}-exp-{args.name}",
             temperatures=tuple(float(x) for x in args.temps.split(",")),
+            verify_singles=args.verify_singles,
         ),
         args,
     )
@@ -142,6 +143,7 @@ if __name__ == "__main__":
     parser.add_argument("--temps", default="0.0,0.7")
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--into")
+    parser.add_argument("--verify-singles", action="store_true")
     args = parser.parse_args()
 
     if args.provider:

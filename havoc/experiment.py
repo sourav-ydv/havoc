@@ -10,7 +10,7 @@ from havoc.faults import Fault
 from havoc.generate import fault_universe, retry_pairs, sample_plans
 from havoc.invariants import max_identical_failures
 from havoc.runner import run_once
-from havoc.shrink import TEMPERATURES, investigate
+from havoc.shrink import TEMPERATURES, classify, investigate, reproduction_rate
 from havoc.stats import fisher_exact, wilson
 from havoc.tasks import get_task
 
@@ -165,7 +165,7 @@ def failed_at(record, threshold):
 
 async def run_analysis(
     task_ids, scope, runs_store, analysis_store, trials, workdir, runner=run_once, log=print,
-    temperatures=TEMPERATURES,
+    temperatures=TEMPERATURES, verify_singles=False,
 ):
     runs = [r for r in runs_store.load() if r.get("type") == "run"]
     analyzed = {(a["task"], a["key"]) for a in analysis_store.load()}
@@ -226,6 +226,37 @@ async def run_analysis(
         state = record["status"] + (", pure compound" if record["pure_compound"] else "")
         log(f"  analysed {' + '.join(f.id for f in plan)} -> {len(result.minimal)} faults, {state}")
 
+    if not verify_singles:
+        return
+
+    for r in runs:
+        if r["strategy"] != "single" or not r["failed"] or r["task"] not in task_ids:
+            continue
+        if (r["task"], r["key"]) in analyzed:
+            continue
+        plan = [Fault.from_dict(r["plan"][0])]
+        task = get_task(r["task"])
+        signature = frozenset(r["signature"])
+        rates = {}
+        for temp in temperatures:
+            rates[temp] = await reproduction_rate(
+                task, plan, signature, f"{scope}-t{temp}", workdir, trials, temp, runner
+            )
+        verdict = classify(rates, {}, 1)
+        analysis_store.append(
+            {
+                "type": "single_check",
+                "task": r["task"],
+                "key": r["key"],
+                "plan": r["plan"],
+                "signature": sorted(signature),
+                "rates": {str(t): list(v) for t, v in rates.items()},
+                "status": verdict["status"],
+            }
+        )
+        analyzed.add((r["task"], r["key"]))
+        log(f"  re-ran single fault {plan[0].id}: {verdict['status']}")
+
 
 def rate_cell(hits, total):
     if total == 0:
@@ -274,6 +305,7 @@ def summarize(runs, analyses):
             fault = Fault.from_dict(r["plan"][0])
             single_causes[(r["task"], fault.id)] = r["signature"]
 
+    single_checks = [a for a in analyses if a["type"] == "single_check"]
     explained = [a for a in analyses if a["type"] == "explained"]
     studied = [a for a in analyses if a["type"] == "analysis"]
     pure = {}
@@ -299,6 +331,7 @@ def summarize(runs, analyses):
         "by_class": {k: dict(v) for k, v in by_class.items()},
         "reduced_to_single": len(reduced),
         "sensitivity": sensitivity,
+        "single_checks": single_checks,
         "single": (single_runs, single_failed),
         "compound": (compound_runs, compound_failed),
         "p_value": p_value,
@@ -395,6 +428,15 @@ def render_markdown(summary):
         lines += ["### Single-fault failures", ""]
         for (task, fault_id), signature in sorted(summary["single_causes"].items()):
             lines.append(f"- {task}: {fault_id} -> {', '.join(signature)} ({failure_class(signature)})")
+        lines.append("")
+
+    if summary["single_checks"]:
+        lines += ["## Are the single-fault failures steady?", ""]
+        lines += ["| Task | Fault | Fresh runs that fail again | Status |", "|---|---|---|---|"]
+        for a in sorted(summary["single_checks"], key=lambda x: (x["task"], x["key"])):
+            fault = Fault.from_dict(a["plan"][0])
+            rates = ", ".join(f"temp {t}: {h}/{n}" for t, (h, n) in a["rates"].items())
+            lines.append(f"| {a['task']} | {fault.id} | {rates} | {a['status']} |")
         lines.append("")
 
     return "\n".join(lines)

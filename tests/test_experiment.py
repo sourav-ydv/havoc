@@ -333,3 +333,45 @@ def test_rescore_stops_if_a_model_call_would_be_needed(tmp_path):
             rescore(old, JsonlStore(tmp_path / "n.jsonl"), "s", tmp_path,
                     Cache(tmp_path / "c.db"), needs_the_model, log=lambda *_: None)
         )
+
+
+def test_failing_single_faults_can_be_re_run_too(tmp_path):
+    store, runner = discover(tmp_path, {"single": 60})
+    analysis = JsonlStore(tmp_path / "analysis.jsonl")
+    asyncio.run(
+        run_analysis(["small_refund"], "s", store, analysis, 2, tmp_path, runner,
+                     log=lambda *_: None, verify_singles=True)
+    )
+    checks = [r for r in analysis.load() if r["type"] == "single_check"]
+    assert len(checks) == 1
+    assert checks[0]["status"] == "confirmed"
+    assert set(checks[0]["rates"]) == {"0.0", "0.7"}
+
+
+def test_single_checks_are_off_unless_asked_for(tmp_path):
+    store, runner = discover(tmp_path, {"single": 60})
+    analysis = JsonlStore(tmp_path / "analysis.jsonl")
+    asyncio.run(run_analysis(["small_refund"], "s", store, analysis, 2, tmp_path, runner, log=lambda *_: None))
+    assert not [r for r in analysis.load() if r["type"] == "single_check"]
+
+
+def test_single_checks_are_not_repeated(tmp_path):
+    store, runner = discover(tmp_path, {"single": 60})
+    analysis = JsonlStore(tmp_path / "analysis.jsonl")
+    kwargs = dict(log=lambda *_: None, verify_singles=True)
+    asyncio.run(run_analysis(["small_refund"], "s", store, analysis, 2, tmp_path, runner, **kwargs))
+    again = fake_runner(rule)
+    asyncio.run(run_analysis(["small_refund"], "s", store, analysis, 2, tmp_path, again, **kwargs))
+    assert again.calls == []
+
+
+def test_report_lists_the_single_fault_checks(tmp_path):
+    store, runner = discover(tmp_path, {"single": 60})
+    analysis = JsonlStore(tmp_path / "analysis.jsonl")
+    asyncio.run(
+        run_analysis(["small_refund"], "s", store, analysis, 2, tmp_path, runner,
+                     log=lambda *_: None, verify_singles=True)
+    )
+    text = render_markdown(summarize(store.load(), analysis.load()))
+    assert "Are the single-fault failures steady?" in text
+    assert CORRUPT in text
