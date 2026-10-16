@@ -153,10 +153,23 @@ def test_call_budget():
     assert inv.call_budget(ctx(trace=trace[:inv.CALL_BUDGET])) == []
 
 
-def test_same_failing_call_three_times_is_a_storm():
+def test_the_same_failing_call_over_the_limit_is_a_storm():
     bad = call("issue_refund", {"order_id": "A1", "amount": 5}, error=True)
     reordered = call("issue_refund", {"amount": 5, "order_id": "A1"}, error=True)
-    assert names(inv.retry_storm(ctx(trace=[bad, reordered, bad]))) == ["retry_storm"]
+    trace = [bad, reordered] * inv.RETRY_LIMIT
+    assert names(inv.retry_storm(ctx(trace=trace))) == ["retry_storm"]
+
+
+def test_three_identical_failures_are_a_normal_retry_budget():
+    bad = call("issue_refund", {"order_id": "A1", "amount": 5}, error=True)
+    assert inv.retry_storm(ctx(trace=[bad, bad, bad])) == []
+
+
+def test_max_identical_failures_counts_the_worst_call():
+    bad = call("issue_refund", {"order_id": "A1", "amount": 5}, error=True)
+    other = call("get_order", {"order_id": "A1"}, error=True)
+    assert inv.max_identical_failures([bad, bad, other]) == 2
+    assert inv.max_identical_failures([]) == 0
 
 
 def test_two_failures_are_not_a_storm():

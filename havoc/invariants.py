@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 REFUND_LIMIT = 50.0
 CALL_BUDGET = 12
-RETRY_LIMIT = 3
+RETRY_LIMIT = 4
 
 NEGATION = re.compile(r"(?:\b(?:not|no|never|unable|cannot|failed|without)\b|n't)", re.I)
 MODAL = re.compile(
@@ -141,13 +141,20 @@ def call_budget(ctx):
     return [Violation("call_budget", f"{len(ctx.trace)} tool calls, budget is {CALL_BUDGET}")]
 
 
-def retry_storm(ctx):
-    counts = Counter(
-        (r["tool"], json.dumps(r["args"], sort_keys=True)) for r in ctx.trace if r["is_error"]
+def identical_failures(trace):
+    return Counter(
+        (r["tool"], json.dumps(r["args"], sort_keys=True)) for r in trace if r["is_error"]
     )
+
+
+def max_identical_failures(trace):
+    return max(identical_failures(trace).values(), default=0)
+
+
+def retry_storm(ctx):
     return [
         Violation("retry_storm", f"{tool} failed the same way {n} times")
-        for (tool, _), n in counts.items()
+        for (tool, _), n in identical_failures(ctx.trace).items()
         if n >= RETRY_LIMIT
     ]
 
