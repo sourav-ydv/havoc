@@ -7,6 +7,7 @@ from pathlib import Path
 from havoc import llm
 from havoc.experiment import (
     parse_budget,
+    rescore,
     render_markdown,
     run_analysis,
     run_discovery,
@@ -100,6 +101,26 @@ async def do_analyze(args, scope, where):
     print(llm.stats, llm.provider_counts)
 
 
+async def do_rescore(args, scope, where):
+    target = locations(args.into)
+    if target["runs"].load():
+        print(f"{args.into} already has runs, pick a new name")
+        return
+    target["config"].parent.mkdir(parents=True, exist_ok=True)
+    if where["config"].exists():
+        target["config"].write_text(where["config"].read_text(encoding="utf-8"), encoding="utf-8")
+    try:
+        changed = await rescore(
+            where["runs"], target["runs"], scope, f".havoc/runs/{scope}-rescore"
+        )
+    except Exception as err:
+        print(f"\nstopped: {root_cause(err)}")
+        print("a rescore only replays saved model calls, so this means one of them is missing")
+        return
+    print(f"\n{changed} runs changed their verdict")
+    print(f"written to {args.into}, now run analyze and report on it")
+
+
 def do_report(args, where):
     summary = summarize(where["runs"].load(), where["analysis"].load())
     text = render_markdown(summary)
@@ -110,7 +131,7 @@ def do_report(args, where):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["run", "analyze", "report"])
+    parser.add_argument("command", choices=["run", "analyze", "report", "rescore"])
     parser.add_argument("--name", required=True)
     parser.add_argument("--provider")
     parser.add_argument("--tasks")
@@ -120,6 +141,7 @@ if __name__ == "__main__":
     parser.add_argument("--trials", type=int, default=5)
     parser.add_argument("--temps", default="0.0,0.7")
     parser.add_argument("--wait", action="store_true")
+    parser.add_argument("--into")
     args = parser.parse_args()
 
     if args.provider:
@@ -131,5 +153,9 @@ if __name__ == "__main__":
         asyncio.run(do_run(args, scope, where))
     elif args.command == "analyze":
         asyncio.run(do_analyze(args, scope, where))
+    elif args.command == "rescore":
+        if not args.into:
+            parser.error("rescore needs --into NEWNAME")
+        asyncio.run(do_rescore(args, scope, where))
     else:
         do_report(args, where)

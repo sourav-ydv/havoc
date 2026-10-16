@@ -6,9 +6,11 @@ import pytest
 
 from havoc.experiment import (
     build_plans,
+    failed_at,
     failure_class,
     parse_budget,
     plan_key,
+    rescore,
     render_markdown,
     run_analysis,
     run_discovery,
@@ -240,3 +242,94 @@ def test_summary_counts_failures_that_shrank_to_one_fault(tmp_path):
     store, analysis = full_study(tmp_path)
     summary = summarize(store.load(), analysis.load())
     assert summary["reduced_to_single"] == 0
+
+
+def test_discovery_records_the_worst_repeated_failure(tmp_path):
+    store, _ = discover(tmp_path, {"single": 3})
+    assert all("max_identical" in r for r in store.load() if r["type"] == "run")
+
+
+def stored_run(store, signature, max_identical=0, failed=True):
+    plan = [make("get_order", 0, "malformed")]
+    store.append(
+        {"type": "run", "task": "small_refund", "strategy": "single", "size": 1,
+         "key": plan_key(plan), "plan": [f.to_dict() for f in plan], "failed": failed,
+         "signature": signature, "max_identical": max_identical}
+    )
+
+
+def test_failed_at_depends_on_the_threshold_only_for_retry_storms():
+    assert failed_at({"signature": ["retry_storm"], "max_identical": 3}, 3)
+    assert not failed_at({"signature": ["retry_storm"], "max_identical": 3}, 4)
+    assert failed_at({"signature": ["task_check"], "max_identical": 0}, 6)
+    assert not failed_at({"signature": [], "max_identical": 2}, 3)
+
+
+def test_sensitivity_table_counts_failures_per_threshold(tmp_path):
+    store = JsonlStore(tmp_path / "r.jsonl")
+    stored_run(store, ["retry_storm"], max_identical=3)
+    plan = [make("get_order", 1, "malformed")]
+    store.append(
+        {"type": "run", "task": "small_refund", "strategy": "single", "size": 1,
+         "key": plan_key(plan), "plan": [f.to_dict() for f in plan], "failed": True,
+         "signature": ["retry_storm"], "max_identical": 6}
+    )
+    summary = summarize(store.load(), [])
+    assert summary["sensitivity"][3] == {"single": 2}
+    assert summary["sensitivity"][4] == {"single": 1}
+    assert summary["sensitivity"][6] == {"single": 1}
+    assert "Sensitivity to the retry threshold" in render_markdown(summary)
+
+
+def test_sensitivity_is_skipped_for_old_records(tmp_path):
+    store, _ = discover(tmp_path, {"single": 3})
+    records = [dict((k, v) for k, v in r.items() if k != "max_identical") for r in store.load()]
+    assert summarize(records, [])["sensitivity"] == {}
+
+
+def test_rescore_rewrites_verdicts_and_keeps_the_old_one(tmp_path):
+    from havoc.cache import Cache
+
+    old = JsonlStore(tmp_path / "old.jsonl")
+    new = JsonlStore(tmp_path / "new.jsonl")
+    stored_run(old, ["retry_storm"], max_identical=3)
+    runner = fake_runner(lambda ids: set())
+    cache = Cache(tmp_path / "c.db")
+    changed = asyncio.run(
+        rescore(old, new, "s", tmp_path, cache, runner, log=lambda *_: None)
+    )
+    record = new.load()[0]
+    assert changed == 1
+    assert record["failed"] is False
+    assert record["signature"] == []
+    assert record["signature_before"] == ["retry_storm"]
+    assert record["rescored"] is True
+    assert "max_identical" in record
+
+
+def test_rescore_copies_other_records_untouched(tmp_path):
+    from havoc.cache import Cache
+
+    old = JsonlStore(tmp_path / "old.jsonl")
+    new = JsonlStore(tmp_path / "new.jsonl")
+    old.append({"type": "clean_failed", "task": "x", "signature": ["task_check"]})
+    asyncio.run(
+        rescore(old, new, "s", tmp_path, Cache(tmp_path / "c.db"), fake_runner(rule), log=lambda *_: None)
+    )
+    assert new.load() == [{"type": "clean_failed", "task": "x", "signature": ["task_check"]}]
+
+
+def test_rescore_stops_if_a_model_call_would_be_needed(tmp_path):
+    from havoc.cache import Cache
+
+    old = JsonlStore(tmp_path / "old.jsonl")
+    stored_run(old, ["task_check"])
+
+    async def needs_the_model(*args, **kwargs):
+        raise RuntimeError("replay needed a model call that is not in the cassette")
+
+    with pytest.raises(RuntimeError):
+        asyncio.run(
+            rescore(old, JsonlStore(tmp_path / "n.jsonl"), "s", tmp_path,
+                    Cache(tmp_path / "c.db"), needs_the_model, log=lambda *_: None)
+        )

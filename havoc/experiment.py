@@ -5,8 +5,10 @@ import time
 from collections import defaultdict
 from types import SimpleNamespace
 
+from havoc import llm
 from havoc.faults import Fault
 from havoc.generate import fault_universe, retry_pairs, sample_plans
+from havoc.invariants import max_identical_failures
 from havoc.runner import run_once
 from havoc.shrink import TEMPERATURES, investigate
 from havoc.stats import fisher_exact, wilson
@@ -107,6 +109,7 @@ async def run_discovery(task_ids, budget, scope, seed, store, workdir, kinds=Non
                         "stop": outcome.result.stop_reason,
                         "turns": outcome.result.turns,
                         "tool_calls": len(outcome.trace),
+                        "max_identical": max_identical_failures(outcome.trace),
                         "models": list(outcome.result.models),
                         "time": time.time(),
                     }
@@ -116,6 +119,48 @@ async def run_discovery(task_ids, budget, scope, seed, store, workdir, kinds=Non
                 mark = "FAIL" if outcome.failed else "ok  "
                 log(f"  [{strategy}] {mark} {' + '.join(f.id for f in plan)}")
             log(f"{task_id} {strategy}: {fresh} new runs, {len(plans) - fresh} already done")
+
+
+async def rescore(runs_store, into_store, scope, workdir, cache=None, runner=run_once, log=print):
+    cache = cache or llm.get_cache()
+    changed = 0
+    with llm.replay_from(cache):
+        for record in runs_store.load():
+            if record.get("type") != "run":
+                into_store.append(record)
+                continue
+            task = get_task(record["task"])
+            plan = [Fault.from_dict(d) for d in record["plan"]]
+            outcome = await runner(task, plan, scope=scope, workdir=workdir, tag="rescore")
+            updated = dict(record)
+            updated.update(
+                {
+                    "failed": bool(outcome.failed),
+                    "signature": sorted(outcome.signature),
+                    "task_ok": bool(outcome.task_ok),
+                    "violations": [f"{v.invariant}: {v.message}" for v in outcome.violations],
+                    "fired": sorted(outcome.fired),
+                    "stop": outcome.result.stop_reason,
+                    "turns": outcome.result.turns,
+                    "tool_calls": len(outcome.trace),
+                    "max_identical": max_identical_failures(outcome.trace),
+                    "rescored": True,
+                }
+            )
+            if sorted(outcome.signature) != record["signature"]:
+                updated["signature_before"] = record["signature"]
+                changed += 1
+                before = ",".join(record["signature"]) or "clean"
+                after = ",".join(sorted(outcome.signature)) or "clean"
+                label = " + ".join(f.id for f in plan)
+                log(f"  changed {before} -> {after}: {label}")
+            into_store.append(updated)
+    return changed
+
+
+def failed_at(record, threshold):
+    other = set(record["signature"]) - {"retry_storm"}
+    return bool(other) or record.get("max_identical", 0) >= threshold
 
 
 async def run_analysis(
@@ -204,6 +249,15 @@ def summarize(runs, analyses):
         if r["failed"]:
             by_class[r["strategy"]][failure_class(r["signature"])] += 1
 
+    sensitivity = {}
+    if runs and all("max_identical" in r for r in runs):
+        for limit in (3, 4, 5, 6):
+            row = defaultdict(int)
+            for r in runs:
+                if failed_at(r, limit):
+                    row[r["strategy"]] += 1
+            sensitivity[limit] = dict(row)
+
     single_runs, single_failed = by_strategy["single"]
     compound_runs = sum(v[0] for k, v in by_strategy.items() if k != "single")
     compound_failed = sum(v[1] for k, v in by_strategy.items() if k != "single")
@@ -244,6 +298,7 @@ def summarize(runs, analyses):
         "by_cell": dict(by_cell),
         "by_class": {k: dict(v) for k, v in by_class.items()},
         "reduced_to_single": len(reduced),
+        "sensitivity": sensitivity,
         "single": (single_runs, single_failed),
         "compound": (compound_runs, compound_failed),
         "p_value": p_value,
@@ -279,6 +334,20 @@ def render_markdown(summary):
             counts = summary["by_class"].get(name, {})
             lines.append(f"| {name} | " + " | ".join(str(counts.get(c, 0)) for c in CLASSES) + " |")
     lines.append("")
+
+    if summary["sensitivity"]:
+        shown = [s for s in STRATEGIES if s in summary["by_strategy"]]
+        lines += [
+            "## Sensitivity to the retry threshold",
+            "",
+            "A retry storm means the same call failing N or more times. Failing runs per strategy at each N:",
+            "",
+            "| N | " + " | ".join(shown) + " |",
+            "|---|" + "---|" * len(shown),
+        ]
+        for limit, row in summary["sensitivity"].items():
+            lines.append(f"| {limit} | " + " | ".join(str(row.get(s, 0)) for s in shown) + " |")
+        lines.append("")
 
     tasks = sorted({task for task, _ in summary["by_cell"]})
     if tasks:
