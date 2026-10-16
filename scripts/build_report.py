@@ -1,0 +1,37 @@
+import argparse
+import asyncio
+from pathlib import Path
+
+from havoc.experiment import summarize
+from havoc.report_page import collect_cases, render_page
+from havoc.store import JsonlStore
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--name", required=True)
+    parser.add_argument("--out", default="docs")
+    parser.add_argument("--repo", default="")
+    parser.add_argument("--title", default="havoc")
+    parser.add_argument("--regressions", default="regressions")
+    args = parser.parse_args()
+
+    root = Path(".havoc/experiments") / args.name
+    runs = JsonlStore(root / "runs.jsonl").load()
+    analyses = JsonlStore(root / "analysis.jsonl").load()
+    if not runs:
+        print(f"no runs found in {root}")
+        return
+
+    cases = asyncio.run(collect_cases(args.regressions))
+    page = render_page(summarize(runs, analyses), cases, args.repo, args.title)
+
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "index.html").write_text(page, encoding="utf-8")
+    (out / ".nojekyll").write_text("", encoding="utf-8")
+    print(f"wrote {out / 'index.html'} with {len(cases)} replayable cases")
+
+
+if __name__ == "__main__":
+    main()
