@@ -1,0 +1,10 @@
+[
+  {
+    "tool": "get_order",
+    "nth": 0,
+    "kind": "drop_field",
+    "params": {
+      "field": "customer_email"
+    }
+  }
+]

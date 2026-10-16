@@ -1,0 +1,14 @@
+[
+  {
+    "tool": "create_ticket",
+    "nth": 0,
+    "kind": "fail_before",
+    "params": {}
+  },
+  {
+    "tool": "create_ticket",
+    "nth": 1,
+    "kind": "fail_before",
+    "params": {}
+  }
+]
