@@ -208,3 +208,9 @@ def test_page_with_single_checks_is_still_well_formed():
     parser = Strict()
     parser.feed(render_page(summary_with_single_checks(), [], "", "havoc"))
     assert parser.problems == [] and parser.stack == []
+
+
+def test_limits_no_longer_claim_single_faults_were_not_re_run():
+    page = render_page(summary_with_single_checks(), [], "", "havoc")
+    assert "not held to the same standard" not in page
+    assert "rests on very few events" in page

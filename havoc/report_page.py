@@ -34,6 +34,7 @@ summary{cursor:pointer;font-weight:600}
 .seen span,.real span{color:var(--muted);margin-right:6px;font-size:.78rem;text-transform:uppercase}
 .real{color:var(--accent)}
 .note{color:var(--muted);font-size:.92rem}
+td code{white-space:nowrap;word-break:normal}
 """
 
 
@@ -269,7 +270,8 @@ Open one to see what the agent saw next to what the server really sent.</p>
 <li>One model, one domain, five tasks.</li>
 <li>Even at temperature 0 the same run can differ, so a failure is a rate, not a yes or no.</li>
 <li>The checks that read the agent's answer are heuristics.</li>
-<li>Single-fault failures are single samples unless re-run, and pairs that failed were re-run, so the two are not held to the same standard.</li>
+<li>Failing runs were re-run five times at temperature 0.7, which separates failures that happen every time from ones that never happen and not much more.</li>
+<li>Only two failures needed both faults of a pair, so any claim about compound failures rests on very few events.</li>
 <li>Delta debugging and fault injection for agents both existed before this. I applied them to MCP agents with state-based checks.</li>
 </ul>
 </main></body></html>"""
