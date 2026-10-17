@@ -174,3 +174,37 @@ def test_a_collected_case_renders_into_the_page(saved_case):
 
 def test_missing_regressions_folder_gives_no_cases(tmp_path):
     assert asyncio.run(collect_cases(tmp_path / "nope")) == []
+
+
+def summary_with_single_checks():
+    runs = [
+        run_record("single", [NASTY], True, ["task_check"]),
+        run_record("single", [FAIL_A], True, ["clean_termination", "retry_storm"]),
+    ]
+    checks = [
+        {"type": "single_check", "task": "small_refund", "key": plan_key([NASTY]),
+         "plan": [NASTY.to_dict()], "signature": ["task_check"],
+         "rates": {"0.7": [5, 5]}, "status": "confirmed"},
+        {"type": "single_check", "task": "small_refund", "key": plan_key([FAIL_A]),
+         "plan": [FAIL_A.to_dict()], "signature": ["clean_termination", "retry_storm"],
+         "rates": {"0.7": [0, 5]}, "status": "unconfirmed"},
+    ]
+    return summarize(runs, checks)
+
+
+def test_single_fault_rerun_results_are_shown():
+    page = render_page(summary_with_single_checks(), [], "", "havoc")
+    assert "5 of 5 at temperature 0.7" in page
+    assert "0 of 5 at temperature 0.7" in page
+    assert "1 of 2 failed again" in page
+    assert "did not hold up" in page
+
+
+def test_single_faults_that_were_not_re_run_say_so():
+    assert "not re-run" in render_page(summary(), [], "", "havoc")
+
+
+def test_page_with_single_checks_is_still_well_formed():
+    parser = Strict()
+    parser.feed(render_page(summary_with_single_checks(), [], "", "havoc"))
+    assert parser.problems == [] and parser.stack == []

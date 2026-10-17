@@ -177,10 +177,28 @@ def render_page(summary, cases, repo_url="", title="havoc"):
         )
 
     single_rows = []
-    checks = {(a["task"], a["key"]): a for a in summary["single_checks"]}
+    checks = {
+        (a["task"], Fault.from_dict(a["plan"][0]).id): a for a in summary["single_checks"]
+    }
     for (task, fault_id), signature in sorted(summary["single_causes"].items()):
+        check = checks.get((task, fault_id))
+        if check:
+            rates = ", ".join(f"{h} of {n} at temperature {t}" for t, (h, n) in check["rates"].items())
+            again = f"{esc(rates)} {chip(check['status'])}"
+        else:
+            again = '<span class="note">not re-run</span>'
         single_rows.append(
-            [esc(task), f"<code>{esc(fault_id)}</code>", chip(failure_class(signature)), esc(", ".join(signature))]
+            [esc(task), f"<code>{esc(fault_id)}</code>", chip(failure_class(signature)),
+             esc(", ".join(signature)), again]
+        )
+
+    reran = ""
+    if summary["single_checks"]:
+        steady = sum(1 for a in summary["single_checks"] if a["status"] == "confirmed")
+        total = len(summary["single_checks"])
+        reran = (
+            f"<p>Each single-fault failure was re-run in fresh runs. {steady} of {total} failed again in at "
+            f"least half of them, and {total - steady} did not hold up.</p>"
         )
 
     pure_blocks = []
@@ -232,7 +250,8 @@ runaway: the agent looped or ran out of turns. incomplete: the task was not done
 {sensitivity}
 
 <h3>Single faults that broke the agent</h3>
-{table(["Task", "Fault", "Kind", "What the checks reported"], single_rows)}
+{reran}
+{table(["Task", "Fault", "Kind", "What the checks reported", "Fresh runs that fail again"], single_rows)}
 
 <h2>Failures that needed two faults</h2>
 <p>Of the failing pairs, {explained} were explained by one of their own faults failing alone, and
