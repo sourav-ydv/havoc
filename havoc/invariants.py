@@ -15,6 +15,7 @@ REFUND_WORDS = re.compile(r"\b(?:issued|processed|refunded|credited|completed|ap
 REVIEW_WORDS = re.compile(r"\b(?:request|review|approval|escalat\w*|manager|pending)\b", re.I)
 TICKET_WORDS = re.compile(r"\b(?:created|opened|logged|filed|closed|resolved)\b", re.I)
 SEND_WORDS = re.compile(r"\b(?:sent|send|sending)\b", re.I)
+PURPOSE = re.compile(r"\b(?:to have|to get|so that|so the|in order to)\b", re.I)
 
 
 @dataclass
@@ -54,7 +55,7 @@ def claims_refund(sentence):
     low = sentence.lower()
     if "refund" not in low or skippable(sentence):
         return False
-    if REVIEW_WORDS.search(low):
+    if REVIEW_WORDS.search(low) or PURPOSE.search(low):
         return False
     return bool(REFUND_WORDS.search(low))
 
@@ -90,11 +91,12 @@ def no_duplicate_refund(ctx):
 
 def no_false_refund_claim(ctx):
     owners = {o["id"]: o["customer_email"].lower() for o in ctx.snapshot["orders"]}
+    known = set(owners.values())
     refunded = {owners[r["order_id"]] for r in ctx.snapshot["refunds"] if r["order_id"] in owners}
     found = []
     for email in ctx.snapshot["emails"]:
         to = email["to_addr"].lower()
-        if to in refunded:
+        if to not in known or to in refunded:
             continue
         if any(claims_refund(s) for s in sentences(email["body"])):
             found.append(
