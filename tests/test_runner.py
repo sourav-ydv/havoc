@@ -75,3 +75,18 @@ def test_unfired_faults_are_not_reported_as_fired(monkeypatch, tmp_path):
 def test_signature_is_empty_when_all_is_well(monkeypatch, tmp_path):
     outcome = run(monkeypatch, tmp_path, "small_refund", list(SMALL_REFUND_OK))
     assert outcome.signature == frozenset()
+
+
+def test_run_once_passes_a_custom_prompt_to_the_agent(monkeypatch, tmp_path):
+    seen = []
+
+    class Recorder(ScriptedLLM):
+        def __call__(self, messages, tools=None, temperature=0.0, scope=""):
+            seen.append(messages[0]["content"])
+            return super().__call__(messages, tools, temperature, scope)
+
+    monkeypatch.setattr(agent.llm, "chat", Recorder([reply("nothing to do")]))
+    asyncio.run(
+        run_once(get_task("small_refund"), workdir=tmp_path, system_prompt="custom rules")
+    )
+    assert seen == ["custom rules"]

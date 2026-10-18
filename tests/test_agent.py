@@ -215,3 +215,43 @@ def test_tool_calls_without_extras_stay_plain(monkeypatch, tmp_path):
     replies = [reply(calls=[("c1", "get_order", {"order_id": "A1001"})]), reply("done")]
     _, _, script = play(monkeypatch, tmp_path, replies)
     assert "extra_content" not in script.seen[1][-2]["tool_calls"][0]
+
+
+def test_the_sequential_variant_adds_exactly_one_rule():
+    from havoc.agent import SEQUENTIAL_RULE, SYSTEM_PROMPT, VARIANTS
+
+    variant = VARIANTS["sequential"]
+    assert variant != SYSTEM_PROMPT
+    assert SEQUENTIAL_RULE in variant
+    assert variant.replace("\n" + SEQUENTIAL_RULE, "") == SYSTEM_PROMPT
+    assert VARIANTS["baseline"] == SYSTEM_PROMPT
+
+
+def test_a_custom_system_prompt_reaches_the_model(monkeypatch, tmp_path):
+    script = ScriptedLLM([reply("done")])
+    monkeypatch.setattr(agent.llm, "chat", script)
+    db_path = tmp_path / "s.db"
+    state.reset(db_path)
+
+    async def go():
+        async with open_session(db_path) as session:
+            return await run_agent(session, "help", system_prompt="You are a test prompt.")
+
+    asyncio.run(go())
+    assert script.seen[0][0]["content"] == "You are a test prompt."
+
+
+def test_the_default_prompt_is_unchanged(monkeypatch, tmp_path):
+    from havoc.agent import SYSTEM_PROMPT
+
+    script = ScriptedLLM([reply("done")])
+    monkeypatch.setattr(agent.llm, "chat", script)
+    db_path = tmp_path / "s.db"
+    state.reset(db_path)
+
+    async def go():
+        async with open_session(db_path) as session:
+            return await run_agent(session, "help")
+
+    asyncio.run(go())
+    assert script.seen[0][0]["content"] == SYSTEM_PROMPT

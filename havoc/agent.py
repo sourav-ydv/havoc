@@ -17,6 +17,19 @@ Rules:
 When you are finished, reply with a short summary of what you did."""
 
 
+SEQUENTIAL_RULE = (
+    "- Do dependent steps one at a time. Never send a confirmation email in the same step as the "
+    "action it confirms. Wait for the action's result, then tell the customer what actually happened."
+)
+
+VARIANTS = {
+    "baseline": SYSTEM_PROMPT,
+    "sequential": SYSTEM_PROMPT.replace(
+        "\n\nWhen you are finished", "\n" + SEQUENTIAL_RULE + "\n\nWhen you are finished"
+    ),
+}
+
+
 @dataclass
 class ToolCall:
     name: str
@@ -102,12 +115,14 @@ async def execute(session, name, raw_args):
     return ToolCall(name, args, result_text(result), bool(result.is_error))
 
 
-async def run_agent(session, prompt, scope="", max_turns=10, temperature=0.0):
+async def run_agent(
+    session, prompt, scope="", max_turns=10, temperature=0.0, system_prompt=SYSTEM_PROMPT
+):
     listing = await session.list_tools()
     tools = to_openai_tools(listing.tools)
 
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": prompt},
     ]
     calls = []
