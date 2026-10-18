@@ -3,6 +3,7 @@ import asyncio
 import os
 
 from havoc import llm
+from havoc.agent import VARIANTS
 from havoc.runner import run_once
 from havoc.tasks import TASKS, get_task
 
@@ -13,13 +14,15 @@ def root_cause(err):
     return err
 
 
-async def main(task_ids, scope, verbose):
+async def main(task_ids, scope, verbose, variant="baseline"):
     tasks = [get_task(t) for t in task_ids] if task_ids else TASKS
     passed = 0
 
     for task in tasks:
         try:
-            outcome = await run_once(task, scope=scope, workdir=f".havoc/runs/{scope}")
+            outcome = await run_once(
+                task, scope=scope, workdir=f".havoc/runs/{scope}", system_prompt=VARIANTS[variant]
+            )
         except Exception as err:
             print(f"ERROR {task.id}: {root_cause(err)}")
             return
@@ -54,8 +57,11 @@ if __name__ == "__main__":
     parser.add_argument("--scope")
     parser.add_argument("--provider")
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--variant", choices=sorted(VARIANTS), default="baseline")
     args = parser.parse_args()
     if args.provider:
         os.environ["HAVOC_PROVIDERS"] = args.provider
     scope = args.scope or args.provider or "baseline"
-    asyncio.run(main(args.task, scope, args.verbose))
+    if args.variant != "baseline":
+        scope = f"{scope}-{args.variant}"
+    asyncio.run(main(args.task, scope, args.verbose, args.variant))
