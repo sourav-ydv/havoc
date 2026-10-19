@@ -3,6 +3,7 @@ import asyncio
 import functools
 import os
 
+from havoc import llm
 from havoc.agent import VARIANTS
 from havoc.faults import parse_fault
 from havoc.runner import run_once
@@ -22,6 +23,18 @@ def cell(hits, trials):
     return f"{hits}/{trials} ({100 * hits / trials:.0f}%, {100 * low:.0f}-{100 * high:.0f}%)"
 
 
+async def collect(args, provider, task, cases, target, scopes, results):
+    for variant, scope in scopes.items():
+        runner = functools.partial(run_once, system_prompt=VARIANTS[variant])
+        for label, faults in cases:
+            if (variant, label) in results:
+                continue
+            results[(variant, label)] = await reproduction_rate(
+                task, faults, target, scope, f".havoc/runs/{provider}-compare",
+                args.trials, 0.7, runner,
+            )
+
+
 async def main(args, provider):
     task = get_task(args.task)
     plan = [parse_fault(s) for s in args.fault]
@@ -31,18 +44,20 @@ async def main(args, provider):
     scopes = {"baseline": f"{provider}-t0.7", args.variant: f"{provider}-{args.variant}-t0.7"}
     results = {}
 
-    try:
-        for variant, scope in scopes.items():
-            runner = functools.partial(run_once, system_prompt=VARIANTS[variant])
-            for label, faults in cases:
-                results[(variant, label)] = await reproduction_rate(
-                    task, faults, target, scope, f".havoc/runs/{provider}-compare",
-                    args.trials, 0.7, runner,
-                )
-    except Exception as err:
-        print(f"ERROR: {root_cause(err)}")
-        print("progress is saved in the cache, run the same command again to continue")
-        return
+    while True:
+        try:
+            await collect(args, provider, task, cases, target, scopes, results)
+            break
+        except Exception as err:
+            cause = root_cause(err)
+            print(f"ERROR: {cause}")
+            delay = llm.quota_delay(cause)
+            if not args.wait or delay is None:
+                print("progress is saved in the cache, run the same command again to continue")
+                return
+            print(f"waiting about {delay / 3600:.1f} hours for the quota, leave this window open")
+            await asyncio.sleep(delay + 120)
+            print("trying again")
 
     print(f"failure: {', '.join(sorted(target))}, {args.trials} fresh runs each at temperature 0.7\n")
     print(f"{'case':<46}{'baseline prompt':<26}{args.variant + ' prompt':<26}")
@@ -66,6 +81,7 @@ if __name__ == "__main__":
     parser.add_argument("--trials", type=int, default=20)
     parser.add_argument("--alone", choices=["first", "all", "none"], default="first")
     parser.add_argument("--provider", default="gemini")
+    parser.add_argument("--wait", action="store_true")
     args = parser.parse_args()
     os.environ["HAVOC_PROVIDERS"] = args.provider
     asyncio.run(main(args, args.provider))
