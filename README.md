@@ -4,6 +4,8 @@ Fault injection for AI agents that use MCP tools.
 
 Most agent tests only cover the happy path. I wanted to see what an agent does when a tool times out, returns half a response, hands back a wrong value, or sneaks instructions into its output. The more specific question is whether combinations of faults break an agent in ways that single faults do not, and whether a failing combination can be shrunk automatically to the smallest set of faults that still breaks it.
 
+Write-up: [What happens when two of an AI agent's tools fail at once](https://dev.to/souravydv/what-happens-when-two-of-an-ai-agents-tools-fail-at-once-9c3)
+
 The experiment is finished, and the short answer is: sometimes, but rarely. Pairs of faults did not break the agent more often than single faults did. One failure needed both faults of a pair. A second finding is subtler: a single failed refund already makes the agent send a premature "refund processed" email in about a quarter of runs, and a failed retry pushes that to about half. A one-line prompt change cut that to about 10%, and to 0 of 40 when only the first call fails. That is a large drop but not a complete fix. Details are in the results section, and there is a [report page](https://sourav-ydv.github.io/havoc/) where you can replay each saved failure.
 
 This covers one model (Gemini 3.5 Flash-Lite), one sandbox and five tasks, all on free tiers. It says something about this setup, not about agents in general.
