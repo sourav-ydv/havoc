@@ -74,3 +74,8 @@ def test_with_wait_it_sleeps_and_continues_where_it_stopped(monkeypatch, capsys)
     slept = run_main(monkeypatch, True, [(2, 4), err, (1, 4), (0, 4), (0, 4)])
     assert slept == [3720.0]
     assert "Fisher exact" in capsys.readouterr().out
+
+
+def test_tiny_p_values_are_shown_as_a_bound():
+    assert compare.p_text(0.0004) == "< 0.001"
+    assert compare.p_text(0.0619) == "0.062"

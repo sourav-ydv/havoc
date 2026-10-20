@@ -18,6 +18,10 @@ def root_cause(err):
     return err
 
 
+def p_text(p):
+    return "< 0.001" if p < 0.001 else f"{p:.3f}"
+
+
 def cell(hits, trials):
     low, high = wilson(hits, trials)
     return f"{hits}/{trials} ({100 * hits / trials:.0f}%, {100 * low:.0f}-{100 * high:.0f}%)"
@@ -66,10 +70,18 @@ async def main(args, provider):
         fixed = results[(args.variant, label)]
         print(f"{label:<46}{cell(*base):<26}{cell(*fixed):<26}")
 
-    base_hits, n = results[("baseline", "the pair")]
-    fixed_hits, _ = results[(args.variant, "the pair")]
-    p = fisher_exact(base_hits, n - base_hits, fixed_hits, n - fixed_hits)
-    print(f"\nthe pair, baseline against {args.variant}: Fisher exact p = {p:.3f}")
+    print()
+    for label, _ in cases:
+        base_hits, n = results[("baseline", label)]
+        fixed_hits, m = results[(args.variant, label)]
+        p = fisher_exact(base_hits, n - base_hits, fixed_hits, m - fixed_hits)
+        print(f"{label}: baseline against {args.variant}, Fisher exact p = {p_text(p)}")
+
+    if len(cases) > 1:
+        pair_hits, n = results[("baseline", "the pair")]
+        alone_hits, m = results[("baseline", cases[1][0])]
+        p = fisher_exact(pair_hits, n - pair_hits, alone_hits, m - alone_hits)
+        print(f"baseline, the pair against {cases[1][0]}: Fisher exact p = {p_text(p)}")
 
 
 if __name__ == "__main__":
