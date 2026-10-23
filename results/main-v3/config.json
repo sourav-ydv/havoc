@@ -1,0 +1,18 @@
+{
+  "name": "main",
+  "scope": "gemini",
+  "tasks": [
+    "small_refund",
+    "big_refund_escalated",
+    "cancelled_order",
+    "order_status",
+    "partial_refund_ticket"
+  ],
+  "budget": {
+    "single": 70,
+    "retry": 9,
+    "random2": 30
+  },
+  "seed": 1,
+  "kinds": null
+}
