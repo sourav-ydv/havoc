@@ -1,7 +1,10 @@
 import argparse
 import asyncio
 import functools
+import json
 import os
+import time
+from pathlib import Path
 
 from havoc import llm
 from havoc.agent import VARIANTS
@@ -77,6 +80,40 @@ async def main(args, provider):
         p = fisher_exact(base_hits, n - base_hits, fixed_hits, m - fixed_hits)
         print(f"{label}: baseline against {args.variant}, Fisher exact p = {p_text(p)}")
 
+    comparisons = []
+    for label, _ in cases:
+        base_hits, n = results[("baseline", label)]
+        fixed_hits, m = results[(args.variant, label)]
+        comparisons.append(
+            {
+                "case": label,
+                "baseline_against_variant_p": fisher_exact(base_hits, n - base_hits, fixed_hits, m - fixed_hits),
+            }
+        )
+
+    if args.out:
+        record = {
+            "task": args.task,
+            "faults": [f.id for f in plan],
+            "target": sorted(target),
+            "variant": args.variant,
+            "temperature": 0.7,
+            "generated": time.strftime("%Y-%m-%d"),
+            "results": [
+                {
+                    "case": label,
+                    "baseline": dict(zip(("hits", "trials"), results[("baseline", label)])),
+                    args.variant: dict(zip(("hits", "trials"), results[(args.variant, label)])),
+                }
+                for label, _ in cases
+            ],
+            "comparisons": comparisons,
+        }
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(record, indent=2), encoding="utf-8")
+        print(f"\nsaved {out}")
+
     if len(cases) > 1:
         pair_hits, n = results[("baseline", "the pair")]
         alone_hits, m = results[("baseline", cases[1][0])]
@@ -94,6 +131,7 @@ if __name__ == "__main__":
     parser.add_argument("--alone", choices=["first", "all", "none"], default="first")
     parser.add_argument("--provider", default="gemini")
     parser.add_argument("--wait", action="store_true")
+    parser.add_argument("--out")
     args = parser.parse_args()
     os.environ["HAVOC_PROVIDERS"] = args.provider
     asyncio.run(main(args, args.provider))

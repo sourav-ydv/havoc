@@ -9,14 +9,17 @@ from havoc.store import JsonlStore
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--name", required=True)
+    parser.add_argument("--name")
+    parser.add_argument("--dir")
     parser.add_argument("--out", default="docs")
     parser.add_argument("--repo", default="")
     parser.add_argument("--title", default="havoc")
     parser.add_argument("--regressions", default="regressions")
     args = parser.parse_args()
 
-    root = Path(".havoc/experiments") / args.name
+    if not args.name and not args.dir:
+        parser.error("give --name for a local experiment or --dir for a saved results folder")
+    root = Path(args.dir) if args.dir else Path(".havoc/experiments") / args.name
     runs = JsonlStore(root / "runs.jsonl").load()
     analyses = JsonlStore(root / "analysis.jsonl").load()
     if not runs:

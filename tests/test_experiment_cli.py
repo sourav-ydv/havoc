@@ -67,3 +67,17 @@ def test_other_errors_are_not_waited_out(monkeypatch):
     result, slept = run(action, True, monkeypatch)
     assert result is False
     assert slept == []
+
+
+def test_the_report_can_be_read_from_a_saved_folder(tmp_path, capsys):
+    from havoc.store import JsonlStore
+
+    JsonlStore(tmp_path / "runs.jsonl").append(
+        {"type": "run", "task": "small_refund", "strategy": "single", "size": 1, "key": "k",
+         "plan": [{"tool": "get_order", "nth": 0, "kind": "malformed", "params": {}}],
+         "failed": False, "signature": [], "max_identical": 0}
+    )
+    where = cli.locations(None, tmp_path)
+    cli.do_report(SimpleNamespace(), where)
+    assert "Experiment results" in capsys.readouterr().out
+    assert (tmp_path / "results.md").exists()

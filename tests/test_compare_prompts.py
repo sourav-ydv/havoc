@@ -33,6 +33,7 @@ def arguments(wait):
         trials=4,
         alone="first",
         wait=wait,
+        out=None,
     )
 
 
@@ -79,3 +80,30 @@ def test_with_wait_it_sleeps_and_continues_where_it_stopped(monkeypatch, capsys)
 def test_tiny_p_values_are_shown_as_a_bound():
     assert compare.p_text(0.0004) == "< 0.001"
     assert compare.p_text(0.0619) == "0.062"
+
+
+def test_the_comparison_can_be_saved_as_data(monkeypatch, tmp_path):
+    import json
+
+    args = arguments(False)
+    args.out = str(tmp_path / "out" / "result.json")
+    run_main(monkeypatch, False, [(19, 40), (10, 40), (4, 40), (0, 40)])
+    # run_main used its own arguments, so run again with the output path set
+    import asyncio
+
+    outcomes = [(19, 40), (10, 40), (4, 40), (0, 40)]
+
+    async def fake_rate(*a, **k):
+        return outcomes.pop(0)
+
+    async def fake_sleep(s):
+        pass
+
+    monkeypatch.setattr(compare, "reproduction_rate", fake_rate)
+    monkeypatch.setattr(compare.asyncio, "sleep", fake_sleep)
+    asyncio.run(compare.main(args, "gemini"))
+    saved = json.loads((tmp_path / "out" / "result.json").read_text())
+    assert saved["results"][0]["baseline"] == {"hits": 19, "trials": 40}
+    assert saved["results"][0]["sequential"] == {"hits": 4, "trials": 40}
+    assert saved["comparisons"][0]["baseline_against_variant_p"] < 0.001
+    assert saved["variant"] == "sequential"

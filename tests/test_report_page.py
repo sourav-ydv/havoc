@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+from pathlib import Path
 from html.parser import HTMLParser
 
 import pytest
@@ -214,3 +215,23 @@ def test_limits_no_longer_claim_single_faults_were_not_re_run():
     page = render_page(summary_with_single_checks(), [], "", "havoc")
     assert "not held to the same standard" not in page
     assert "rests on very few events" in page
+
+
+def test_the_report_page_can_be_built_from_a_saved_folder(tmp_path):
+    import subprocess
+    import sys
+
+    from havoc.store import JsonlStore
+
+    data = tmp_path / "saved"
+    for record in [run_record("single", [NASTY], True, ["task_check"])]:
+        JsonlStore(data / "runs.jsonl").append(record)
+    out = tmp_path / "site"
+    script = Path(__file__).resolve().parent.parent / "scripts" / "build_report.py"
+    done = subprocess.run(
+        [sys.executable, str(script), "--dir", str(data), "--out", str(out), "--regressions", str(tmp_path / "none")],
+        capture_output=True, text=True,
+    )
+    assert done.returncode == 0, done.stderr
+    assert (out / "index.html").exists()
+    assert "havoc" in (out / "index.html").read_text(encoding="utf-8")
