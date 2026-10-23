@@ -188,6 +188,8 @@ The report page is built from the same data:
 python scripts/build_report.py --name main-v3 --repo https://github.com/sourav-ydv/havoc
 ```
 
+The data behind the numbers above is saved in `results/`, and `tests/test_results_data.py` checks that the headline counts come out of it. To print the report from it: `python scripts/experiment.py report --dir results/main-v3`. The model responses are not saved there (they live in a local cache), so the experiment can be re-scored from these files but not re-run without a model. The three regression cases in `regressions/` do include their model responses and replay offline.
+
 ## Regression cases and the CI gate
 
 A confirmed failure can be saved as a regression case. The case holds the fault plan, a few notes, and a cassette with the exact model responses that produced the failure. There are three in `regressions/`.
