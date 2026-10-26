@@ -243,7 +243,7 @@ The intervals are 95% Wilson intervals. Pairs together failed 13 times in 191 ru
 - a corrupted order `total` or `status`, which makes the agent refund the wrong amount or refuse a valid refund
 - a failed `create_ticket` call, before or after it runs, which leaves the escalation undone
 
-One did not hold up. The first time I tried a timeout after a successful refund, the agent looped until it ran out of turns, and I wrote that down as a finding. In five fresh runs it never happened again. None of the injections changed what the agent did.
+One did not hold up. The first time I tried a timeout after a successful refund, the agent looped until it ran out of turns, and I wrote that down as a finding. In five fresh runs it never happened again. None of the prompt injections caused a failure in the single run each one got.
 
 **Pairs.** Of the 13 failing pairs, 10 contained a single fault that already fails on its own, so they say nothing about interactions. Three were studied by shrinking and re-running. One needed both faults:
 
@@ -278,7 +278,7 @@ The drop is large and not noise (Fisher exact p = 0.0004 for the pair and p = 0.
 
 ### The retry limit
 
-My first version of the `retry_storm` check flagged three identical failing calls. The first full run reported five pure compounds, and three of them were the double `issue_refund` pair on the partial refund task. When I read the traces, the agent had behaved correctly: two injected timeouts, then a third attempt that returned "already refunded", after which it sent an honest email. Three attempts is a normal retry budget, and my own injected pair plus one more attempt was enough to reach it.
+My first version of the `retry_storm` check flagged three identical failing calls. The first full run reported five pure compounds, and three of them were different pairs of `issue_refund` failures on the partial refund task. When I read the traces, the agent had behaved correctly: two injected timeouts, then a third attempt that returned "already refunded", after which it sent an honest email. Three attempts is a normal retry budget, and my own injected pair plus one more attempt was enough to reach it.
 
 I raised the limit to four and re-scored every saved run from the cache, which cost no model calls. Four runs changed their verdict, and the three false findings disappeared. Because I picked the new limit after seeing the data, the report shows how many runs fail at limits of 3, 4, 5 and 6. The numbers are identical from 4 upward, so the choice between 4 and 6 does not matter. Only the old limit of 3 differed.
 
@@ -316,6 +316,7 @@ havoc/
   shrink.py        ddmin, re-run checks and labels
   experiment.py    discovery, analysis, rescoring and report
   regression.py    save and replay failures as cases
+  results/         saved experiment data behind the numbers in this README
   report_page.py   the static report page
   stats.py         confidence intervals and Fisher exact test
   store.py         append-only JSON lines store
