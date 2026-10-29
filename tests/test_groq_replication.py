@@ -148,3 +148,31 @@ def test_published_report_names_the_corruption_runs():
     ):
         assert phrase in page
     assert "data-corruption faults were not run" not in page
+
+def test_readme_quotes_the_other_single_faults():
+    body = section()
+    specs = [
+        ("partial-ticket-fail-before.json", (7, 10), "fail_before"),
+        ("partial-ticket-fail-after.json", (10, 10), "fail_after"),
+        ("partial-drop-email.json", (0, 10), "drop_field"),
+    ]
+    for name, expected, kind in specs:
+        record = load(name)
+        assert record["provider"] == "groq" and record["temperature"] == 0.7
+        assert record["task"] == "partial_refund_ticket"
+        assert baseline(record, "the pair") == expected
+        assert kind in record["faults"][0]
+        assert rate(*expected) in body
+    assert "p = 0.505" in body
+    assert "p = 0.022" in body
+    assert "partial-ticket-fail-before.json" in body
+
+
+def test_published_report_names_the_other_single_faults():
+    page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+    for phrase in (
+        "partial_refund_ticket ticket fails before 7 of 10",
+        "partial_refund_ticket ticket fails after 10 of 10",
+        "partial_refund_ticket dropped email 0 of 10",
+    ):
+        assert phrase in page
