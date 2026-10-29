@@ -38,7 +38,7 @@ def test_follow_up_counts_match_the_readme(summary):
 def test_failures_are_grouped_as_in_the_readme(summary):
     by_class = summary["by_class"]
     assert by_class["single"] == {"unsafe": 2, "runaway": 1, "incomplete": 5}
-    assert by_class["retry"] == {"unsafe": 1, "incomplete": 5}
+    assert by_class["retry"] == {"unsafe": 2, "incomplete": 4}
     assert by_class["random2"] == {"unsafe": 2, "runaway": 1, "incomplete": 4}
 
 
