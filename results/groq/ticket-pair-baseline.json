@@ -1,0 +1,31 @@
+{
+  "task": "big_refund_escalated",
+  "provider": "groq",
+  "faults": [
+    "create_ticket#0:fail_before",
+    "create_ticket#1:fail_before"
+  ],
+  "target": [
+    "task_check"
+  ],
+  "variant": null,
+  "temperature": 0.7,
+  "generated": "2026-10-27",
+  "results": [
+    {
+      "case": "the pair",
+      "baseline": {
+        "hits": 1,
+        "trials": 10
+      }
+    },
+    {
+      "case": "create_ticket#0:fail_before alone",
+      "baseline": {
+        "hits": 1,
+        "trials": 10
+      }
+    }
+  ],
+  "comparisons": []
+}

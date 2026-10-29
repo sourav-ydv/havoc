@@ -34,6 +34,7 @@ def arguments(wait):
         alone="first",
         wait=wait,
         out=None,
+        arms="both",
     )
 
 
@@ -107,3 +108,27 @@ def test_the_comparison_can_be_saved_as_data(monkeypatch, tmp_path):
     assert saved["results"][0]["sequential"] == {"hits": 4, "trials": 40}
     assert saved["comparisons"][0]["baseline_against_variant_p"] < 0.001
     assert saved["variant"] == "sequential"
+
+
+def test_the_baseline_arm_can_be_run_alone(monkeypatch, capsys, tmp_path):
+    import asyncio
+    import json
+
+    args = arguments(False)
+    args.arms = "baseline"
+    args.out = str(tmp_path / "base.json")
+    outcomes = [(5, 10), (2, 10)]
+
+    async def fake_rate(*a, **k):
+        return outcomes.pop(0)
+
+    monkeypatch.setattr(compare, "reproduction_rate", fake_rate)
+    asyncio.run(compare.main(args, "groq"))
+    out = capsys.readouterr().out
+    assert "sequential prompt" not in out
+    assert "baseline, the pair against" in out
+    saved = json.loads((tmp_path / "base.json").read_text())
+    assert saved["variant"] is None
+    assert saved["provider"] == "groq"
+    assert saved["results"][0]["baseline"] == {"hits": 5, "trials": 10}
+    assert "sequential" not in saved["results"][0]
