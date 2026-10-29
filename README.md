@@ -21,6 +21,7 @@ The full experiment covers one model (Gemini 3.5 Flash-Lite), one sandbox and fi
 - An experiment harness that runs many plans, saves every run, can be stopped and continued, and writes a report
 - A cache for model calls so repeated runs are free and replayable, and a way to save a failure as an offline regression case
 - A static report page built from the experiment data
+- A `havoc` command that replays a saved failure through the proxy with no API key
 - Provider fallback across Gemini, Groq and a local Ollama model, with pacing and retries for free-tier limits
 
 ## Why it is built this way
@@ -126,6 +127,13 @@ python scripts/ping.py
 ```
 
 A fresh clone passes the tests without a `.env` file, because the tests use scripted models and the saved regression cases. Only the scripts that call a model need keys.
+
+Replay a saved failure with no API key:
+
+```bash
+havoc doctor
+havoc run
+havoc report
 
 ## Running things
 
