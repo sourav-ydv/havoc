@@ -15,6 +15,7 @@ The full experiment covers one model (Gemini 3.5 Flash-Lite), one sandbox and fi
 - A small customer-support sandbox exposed as an MCP server (orders, refunds, emails, tickets), backed by SQLite so I can check what actually happened afterwards
 - A plain tool-calling agent loop with no framework, and a way to run it with a different system prompt
 - A proxy that sits between the agent and any MCP server, records every tool call, and can inject faults into the responses
+- An optional guard on that proxy. It is off unless a run asks for it. When on, it refuses an email that claims a refund the database does not contain
 - Six kinds of faults, and plans that combine several of them
 - Nine safety checks that run against the final database and the trace after every run
 - A generator that proposes candidate faults from a clean run, and a shrinker that reduces a failing plan to a minimal one
@@ -176,6 +177,11 @@ The proxy can also be used on its own in front of any stdio MCP server:
 python -m havoc.proxy --trace trace.jsonl --faults plan.json -- python my_server.py
 ```
 
+The same proxy can refuse a false refund email. The sandbox database has to be in `HAVOC_STATE_DB`. This does not change a run unless `--guard refund-claim` is present.
+
+```bash
+python -m havoc.proxy --trace trace.jsonl --guard refund-claim -- python -m havoc.sandbox.server
+
 ## Running an experiment
 
 The harness has four commands. Each one saves its work, so a quota error is not a problem. You run the same command again and it carries on.
@@ -289,6 +295,10 @@ The four emails did not say the refund had happened. Each one said a ticket had 
 
 I also only tested the rule on the plan that exposed the problem, with one model, so I would not call it a general fix. What the exercise shows is the loop: find a failure with the tool, change something, and measure the change with the same tool.
 
+```markdown
+### The tool can refuse the email
+The prompt rule asks the model to wait. A second line of defense is to refuse the send. With `--guard refund-claim`, the proxy reads the sandbox database before it forwards `send_email`. If the message says a refund was completed and that customer has no refund recorded, the proxy returns an error and the email is not stored. "Your refund has been processed" is refused. "Ensure your refund is processed as soon as possible" is delivered, because that is a promise, not a completed refund. A confirmation after a real refund is delivered. Mail to an address that is not a customer is left alone, and the recipient check still handles that case. The guard is off in the saved experiment, so those counts are unchanged. It has not been measured on a live model yet.
+
 ### The same plans on a second model
 
 The discovery run stayed on Gemini. I then ran the two plans behind the findings above on Groq (`openai/gpt-oss-120b`, the model named in the baseline), 10 times each at temperature 0.7. The saved files are `results/groq/small_refund-baseline.json` and `results/groq/ticket-pair-baseline.json`. They record the provider, the temperature and the hit counts. They do not record the traces, so this section does not describe how Groq ordered its calls. Ten runs is a small sample, and the intervals below are wide.
@@ -394,3 +404,4 @@ Shrinking a failing input to a minimal one is not new either. Delta debugging co
 - The full single-fault sweep on a second model. The other confirmed single faults, the two `create_ticket` failures and the dropped `customer_email`, have not been run on Groq.
 - Checking the prompt fix on other tasks and on a second model
 - Re-scoring `results/main-v3` with `no_false_review_claim`, which needs the local model cache
+- Measuring the refund-email guard on a live model, against the normal prompt and the sequential prompt

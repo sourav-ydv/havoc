@@ -10,7 +10,7 @@ from havoc.faults import save_plan
 
 
 @asynccontextmanager
-async def open_session(db_path, trace_path=None, faults=None):
+async def open_session(db_path, trace_path=None, faults=None, guard=None):
     command = [sys.executable, "-m", "havoc.sandbox.server"]
 
     if faults and not trace_path:
@@ -22,6 +22,8 @@ async def open_session(db_path, trace_path=None, faults=None):
             plan_path = Path(trace_path).with_suffix(".faults.json")
             save_plan(plan_path, faults)
             proxy += ["--faults", str(plan_path)]
+        if guard:
+            proxy += ["--guard", guard]
         command = proxy + ["--"] + command
 
     params = StdioServerParameters(

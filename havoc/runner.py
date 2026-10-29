@@ -37,7 +37,7 @@ class Outcome:
 
 async def run_once(
     task, faults=(), scope="baseline", workdir=".havoc/runs", tag=None, temperature=0.0,
-    system_prompt=None,
+    system_prompt=None, guard=None,
 ):
     name = tag or task.id
     db_path = Path(workdir) / f"{name}.db"
@@ -45,7 +45,7 @@ async def run_once(
     plan = list(faults)
 
     state.reset(db_path)
-    async with open_session(db_path, trace_path, plan or None) as session:
+    async with open_session(db_path, trace_path, plan or None, guard=guard) as session:
         extra = {"system_prompt": system_prompt} if system_prompt else {}
         result = await run_agent(
             session, task.prompt, scope=scope, temperature=temperature, **extra
