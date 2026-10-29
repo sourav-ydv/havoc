@@ -1,0 +1,34 @@
+{
+  "task": "small_refund",
+  "provider": "gemini",
+  "faults": [
+    "issue_refund#0:fail_before",
+    "issue_refund#1:fail_before"
+  ],
+  "target": [
+    "task_check"
+  ],
+  "variant": "sequential",
+  "guard": "refund-claim",
+  "temperature": 0.7,
+  "generated": "2026-10-29",
+  "results": [
+    {
+      "case": "the pair",
+      "baseline": {
+        "hits": 8,
+        "trials": 10
+      },
+      "sequential": {
+        "hits": 10,
+        "trials": 10
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "case": "the pair",
+      "baseline_against_variant_p": 0.47368421052631576
+    }
+  ]
+}
