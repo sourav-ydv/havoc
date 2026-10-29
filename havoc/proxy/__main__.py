@@ -1,3 +1,4 @@
+import os
 import argparse
 import subprocess
 import sys
@@ -31,6 +32,7 @@ def main():
     parser = argparse.ArgumentParser(prog="havoc.proxy")
     parser.add_argument("--trace")
     parser.add_argument("--faults")
+    parser.add_argument("--guard", choices=["refund-claim"])
     args = parser.parse_args(own_args)
     if not command:
         parser.error("give the server command after --")
@@ -48,7 +50,8 @@ def main():
         child.stdin.flush()
 
     plan = load_plan(args.faults) if args.faults else []
-    interceptor = Interceptor(TraceWriter(args.trace), plan, emit=to_client)
+    guard_db = os.environ.get("HAVOC_STATE_DB") if args.guard == "refund-claim" else None
+    interceptor = Interceptor(TraceWriter(args.trace), plan, emit=to_client, guard_db=guard_db)
 
     upstream = threading.Thread(
         target=pump,

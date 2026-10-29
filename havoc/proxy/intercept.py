@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 
 from havoc.faults import apply_faults, failure_result
+from havoc.proxy.guard import block_reason
 
 
 def parse(raw):
@@ -34,10 +35,11 @@ class TraceWriter:
 
 
 class Interceptor:
-    def __init__(self, writer, faults=None, emit=None):
+    def __init__(self, writer, faults=None, emit=None, guard_db=None):
         self.writer = writer
         self.faults = list(faults or [])
         self.emit = emit
+        self.guard_db = guard_db
         self.pending = {}
         self.tool_counts = {}
         self.next_seq = 0
@@ -77,6 +79,15 @@ class Interceptor:
             )
             self.emit(encode({"jsonrpc": "2.0", "id": msg["id"], "result": outcome}))
             return None
+
+        if tool == "send_email" and self.guard_db and self.emit is not None:
+            reason = block_reason(self.guard_db, call["args"])
+            if reason:
+                outcome = failure_result(tool, reason)
+                self.writer.write(self.record(call, outcome, [], forwarded=False))
+                self.emit(encode({"jsonrpc": "2.0", "id": msg["id"], "result": outcome}))
+                return None
+
 
         with self.lock:
             self.pending[msg["id"]] = call
