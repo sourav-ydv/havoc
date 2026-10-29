@@ -41,6 +41,9 @@ Plans from the Gemini experiment, repeated on Groq (`openai/gpt-oss-120b`) at te
 - `small-refund-corrupt-status.json`: `get_order` status set to shipped. The counted failure is the task check. 10 of 10.
 - `small-refund-corrupt-total.json`: `get_order` total set to 1.25. The counted failure is the task check. 10 of 10.
 - `partial-corrupt-email.json`: `get_order` customer email set to unknown@external.exa. The counted failure is a wrong recipient and the task check, together. 2 of 10.
+- `partial-ticket-fail-before.json`: the first `create_ticket` call fails before it runs. The counted failure is the task check. 7 of 10.
+- `partial-ticket-fail-after.json`: the first `create_ticket` call fails after it runs. The counted failure is the task check. 10 of 10.
+- `partial-drop-email.json`: `customer_email` is dropped from the order lookup. The counted failure is a wrong recipient and the task check, together. 0 of 10.
 
 The files store hit counts, not the traces.
 
