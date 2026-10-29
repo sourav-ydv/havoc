@@ -20,7 +20,7 @@ python scripts/experiment.py report --dir results/main-v3
 To rebuild the report page from it:
 
 ```bash
-python scripts/build_report.py --dir results/main-v3 --repo https://github.com/sourav-ydv/havoc
+python scripts/build_report.py --dir results/main-v3 --repo https://github.com/sourav-ydv/havoc --replication results/groq
 ```
 
 `tests/test_results_data.py` checks that the headline numbers in the README come out of these files.
@@ -28,6 +28,15 @@ python scripts/build_report.py --dir results/main-v3 --repo https://github.com/s
 ## prompt-fix
 
 `small_refund-sequential.json` holds the 40-run comparison of the normal system prompt against the variant with one extra rule, for the refund failure: the hits, the trials and the Fisher exact p-values for each case.
+
+## groq
+
+Two headline plans from the Gemini experiment, repeated on Groq at temperature 0.7, ten runs each. The README comparison is taken from these files together with the Gemini counts in `prompt-fix/` and `main-v3/analysis.jsonl`.
+
+- `small_refund-baseline.json`: both `issue_refund` calls fail, and the first call alone. The counted failure is a false refund claim plus the task check.
+- `ticket-pair-baseline.json`: both `create_ticket` calls fail, and the first call alone. The counted failure is the task check.
+
+The files store hit counts, not the traces.
 
 ## What is not here
 

@@ -12,7 +12,15 @@ from havoc.cache import Cache
 from havoc.experiment import plan_key, summarize
 from havoc.faults import make
 from havoc.regression import export_regression
-from havoc.report_page import collect_cases, render_page, short, timeline
+from havoc.report_page import (
+    collect_cases,
+    compound_limit,
+    render_page,
+    replication_limit,
+    replication_note,
+    short,
+    timeline,
+)
 from havoc.tasks import get_task
 
 
@@ -101,6 +109,65 @@ def test_pure_compound_details_are_shown():
 
 def test_page_says_when_there_are_no_cases():
     assert "No saved cases yet" in render_page(summary(), [], "", "havoc")
+
+
+def test_page_keeps_the_single_model_note_without_a_replication():
+    page = render_page(summary(), [], "", "havoc")
+    assert "One model (Gemini 3.5 Flash-Lite), five customer-support tasks" in page
+    assert "One model, one domain, five tasks." in page
+    assert "Only one failure needed both faults of a pair" in page
+    assert "Only two failures" not in page
+
+
+def test_page_names_a_second_provider_from_saved_counts():
+    replication = [
+        {
+            "task": "small_refund",
+            "provider": "groq",
+            "temperature": 0.7,
+            "results": [{"case": "the pair", "baseline": {"hits": 0, "trials": 10}}],
+        },
+        {
+            "task": "big_refund_escalated",
+            "provider": "groq",
+            "temperature": 0.7,
+            "results": [{"case": "the pair", "baseline": {"hits": 1, "trials": 10}}],
+        },
+    ]
+    page = render_page(summary(), [], "", "havoc", replication)
+    assert "small_refund 0 of 10" in page
+    assert "big_refund_escalated 1 of 10" in page
+    assert "on Groq at temperature 0.7" in page
+    assert "The full single-fault sweep and the data-corruption faults were not run" in page
+    parser = Strict()
+    parser.feed(page)
+    assert parser.problems == []
+    assert parser.stack == []
+
+
+def test_compound_limit_follows_the_count():
+    assert "No saved failure" in compound_limit(0)
+    assert "Only one failure" in compound_limit(1)
+    assert "Only 2 failures" in compound_limit(2)
+
+
+def test_replication_text_sorts_tasks_and_uses_the_pair_row():
+    records = [
+        {
+            "task": "small_refund",
+            "provider": "groq",
+            "temperature": 0.7,
+            "results": [
+                {"case": "other", "baseline": {"hits": 9, "trials": 10}},
+                {"case": "the pair", "baseline": {"hits": 0, "trials": 10}},
+            ],
+        }
+    ]
+    assert replication_note(records).startswith(
+        "The counts above are Gemini 3.5 Flash-Lite"
+    )
+    assert "small_refund 0 of 10" in replication_note(records)
+    assert "9 of 10" not in replication_limit(records)
 
 
 def test_short_collapses_whitespace_and_truncates():
@@ -214,7 +281,7 @@ def test_page_with_single_checks_is_still_well_formed():
 def test_limits_no_longer_claim_single_faults_were_not_re_run():
     page = render_page(summary_with_single_checks(), [], "", "havoc")
     assert "not held to the same standard" not in page
-    assert "rests on very few events" in page
+    assert "No saved failure needed both faults of a pair." in page
 
 
 def test_the_report_page_can_be_built_from_a_saved_folder(tmp_path):
