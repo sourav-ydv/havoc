@@ -39,7 +39,7 @@ any failing combination to the smallest set that still fails.</p>
 
 <div class="cards"><div class="card"><b>8 of 220</b><span>single faults broke the agent</span></div><div class="card"><b>13 of 191</b><span>pairs of faults broke the agent</span></div><div class="card"><b>1</b><span>failures that needed both faults of a pair</span></div><div class="card"><b>10 of 13</b><span>failing pairs were just one bad fault plus noise</span></div></div>
 
-<p class="note">The counts above are Gemini 3.5 Flash-Lite on five customer-support tasks, run on free tiers. Two headline plans were repeated on Groq at temperature 0.7: big_refund_escalated 1 of 10; small_refund 0 of 10. The full sweep was not repeated. These numbers describe this setup, not agents in general.</p>
+<p class="note">The counts above are Gemini 3.5 Flash-Lite on five customer-support tasks, run on free tiers. 6 plans were repeated on Groq at temperature 0.7: big_refund_escalated 1 of 10; big_refund_escalated corrupted total 10 of 10; partial_refund_ticket corrupted email 2 of 10; small_refund 0 of 10; small_refund corrupted status 10 of 10; small_refund corrupted total 10 of 10. The full sweep was not repeated. These numbers describe this setup, not agents in general.</p>
 
 <h2>How it works</h2>
 <div class="flow"><div>agent</div><i>→</i><div>proxy that records and breaks tool calls</div><i>→</i><div>MCP server and database</div><i>→</i><div>checks on the final state</div></div>
@@ -71,7 +71,7 @@ Open one to see what the agent saw next to what the server really sent.</p>
 
 <h2>Limits</h2>
 <ul>
-<li>A second provider (Groq) was checked on these plans only: big_refund_escalated 1 of 10; small_refund 0 of 10. The full single-fault sweep and the data-corruption faults were not run on it. One domain, five tasks.</li>
+<li>A second provider (Groq) was checked on these plans only: big_refund_escalated 1 of 10; big_refund_escalated corrupted total 10 of 10; partial_refund_ticket corrupted email 2 of 10; small_refund 0 of 10; small_refund corrupted status 10 of 10; small_refund corrupted total 10 of 10. The full single-fault sweep was not run on it. One domain, five tasks.</li>
 <li>Even at temperature 0 the same run can differ, so a failure is a rate, not a yes or no.</li>
 <li>The checks that read the agent's answer are heuristics.</li>
 <li>Failing runs were re-run five times at temperature 0.7, which separates failures that happen every time from ones that never happen and not much more.</li>

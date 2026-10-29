@@ -117,5 +117,34 @@ def test_limits_and_backlog_match_what_was_actually_run():
     assert "10 runs each" in limits
     assert "The same experiment on a second model" not in pending
     assert "full single-fault sweep" in pending
-    assert "data-corruption faults" in pending
+    assert "data-corruption faults have not been run" not in pending
     assert "neither finding reproduced" in intro
+
+def test_readme_quotes_the_corruption_runs():
+    body = section()
+    specs = [
+        ("big-refund-corrupt-total.json", (10, 10)),
+        ("small-refund-corrupt-status.json", (10, 10)),
+        ("small-refund-corrupt-total.json", (10, 10)),
+        ("partial-corrupt-email.json", (2, 10)),
+    ]
+    for name, expected in specs:
+        record = load(name)
+        assert record["provider"] == "groq" and record["temperature"] == 0.7
+        assert baseline(record, "the pair") == expected
+        assert "corrupt_field" in record["faults"][0]
+        assert rate(*expected) in body
+    assert "p = 0.007" in body
+
+
+def test_published_report_names_the_corruption_runs():
+    page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+    for phrase in (
+        "big_refund_escalated corrupted total 10 of 10",
+        "partial_refund_ticket corrupted email 2 of 10",
+        "small_refund corrupted status 10 of 10",
+        "small_refund corrupted total 10 of 10",
+        "The full single-fault sweep was not run",
+    ):
+        assert phrase in page
+    assert "data-corruption faults were not run" not in page
