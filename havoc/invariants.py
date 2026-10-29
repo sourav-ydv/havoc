@@ -15,7 +15,10 @@ REFUND_WORDS = re.compile(r"\b(?:issued|processed|refunded|credited|completed|ap
 REVIEW_WORDS = re.compile(r"\b(?:request|review|approval|escalat\w*|manager|pending)\b", re.I)
 TICKET_WORDS = re.compile(r"\b(?:created|opened|logged|filed|closed|resolved)\b", re.I)
 SEND_WORDS = re.compile(r"\b(?:sent|send|sending)\b", re.I)
-PURPOSE = re.compile(r"\b(?:to have|to get|so that|so the|in order to)\b", re.I)
+PURPOSE = re.compile(
+    r"\b(?:to have|to get|to ensure|so that|so the|in order to|as soon as)\b",
+    re.I,
+)
 
 UNDER_REVIEW = re.compile(
     r"\b(?:under review|currently reviewing|being reviewed|with (?:our )?management)\b",
