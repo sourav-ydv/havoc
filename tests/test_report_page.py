@@ -144,6 +144,22 @@ def test_page_names_a_second_provider_from_saved_counts():
     assert parser.problems == []
     assert parser.stack == []
 
+def test_page_drops_the_corruption_gap_once_those_faults_were_run():
+    replication = [
+        {
+            "task": "partial_refund_ticket",
+            "provider": "groq",
+            "temperature": 0.7,
+            "label": "partial_refund_ticket corrupted email",
+            "faults": ["get_order#0:corrupt_field(field=customer_email,value=unknown@external.exa)"],
+            "results": [{"case": "the pair", "baseline": {"hits": 2, "trials": 10}}],
+        }
+    ]
+    page = render_page(summary(), [], "", "havoc", replication)
+    assert "partial_refund_ticket corrupted email 2 of 10" in page
+    assert "data-corruption faults were not run" not in page
+    assert "The full single-fault sweep was not run" in page
+
 
 def test_compound_limit_follows_the_count():
     assert "No saved failure" in compound_limit(0)

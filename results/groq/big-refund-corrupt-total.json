@@ -1,0 +1,24 @@
+{
+  "task": "big_refund_escalated",
+  "label": "big_refund_escalated corrupted total",
+  "provider": "groq",
+  "faults": [
+    "get_order#0:corrupt_field(field=total,value=34.9)"
+  ],
+  "target": [
+    "task_check"
+  ],
+  "variant": null,
+  "temperature": 0.7,
+  "generated": "2026-10-29",
+  "results": [
+    {
+      "case": "the pair",
+      "baseline": {
+        "hits": 10,
+        "trials": 10
+      }
+    }
+  ],
+  "comparisons": []
+}

@@ -153,12 +153,29 @@ def compound_limit(count):
     )
 
 
+def plan_label(record):
+    return record.get("label") or record["task"]
+
+
+def counted(record):
+    hits, trials = pair_count(record)
+    return f"{plan_label(record)} {hits} of {trials}"
+
+
+def sweep_gap(records):
+    ran_corruption = any(
+        "corrupt_field" in fault
+        for record in records
+        for fault in record.get("faults") or []
+    )
+    if ran_corruption:
+        return "The full single-fault sweep was not run on it."
+    return "The full single-fault sweep and the data-corruption faults were not run on it."
+
+
 def replication_note(records):
-    records = sorted(records, key=lambda record: record["task"])
-    parts = []
-    for record in records:
-        hits, trials = pair_count(record)
-        parts.append(f"{record['task']} {hits} of {trials}")
+    records = sorted(records, key=lambda record: (record["task"], plan_label(record)))
+    parts = [counted(record) for record in records]
     temps = {record["temperature"] for record in records}
     where = (
         f"at temperature {next(iter(temps))}"
@@ -168,20 +185,17 @@ def replication_note(records):
     count = {1: "One", 2: "Two"}.get(len(records), str(len(records)))
     return (
         "The counts above are Gemini 3.5 Flash-Lite on five customer-support tasks, run on free tiers. "
-        f"{count} headline plans were repeated on {provider_label(records)} {where}: {'; '.join(parts)}. "
+        f"{count} plans were repeated on {provider_label(records)} {where}: {'; '.join(parts)}. "
         "The full sweep was not repeated. These numbers describe this setup, not agents in general."
     )
 
 
 def replication_limit(records):
-    records = sorted(records, key=lambda record: record["task"])
-    parts = []
-    for record in records:
-        hits, trials = pair_count(record)
-        parts.append(f"{record['task']} {hits} of {trials}")
+    records = sorted(records, key=lambda record: (record["task"], plan_label(record)))
+    parts = [counted(record) for record in records]
     return (
         f"A second provider ({provider_label(records)}) was checked on these plans only: {'; '.join(parts)}. "
-        "The full single-fault sweep and the data-corruption faults were not run on it. "
+        f"{sweep_gap(records)} "
         "One domain, five tasks."
     )
 
