@@ -132,3 +132,26 @@ def test_the_baseline_arm_can_be_run_alone(monkeypatch, capsys, tmp_path):
     assert saved["provider"] == "groq"
     assert saved["results"][0]["baseline"] == {"hits": 5, "trials": 10}
     assert "sequential" not in saved["results"][0]
+
+def test_the_guard_is_passed_into_the_run(monkeypatch, tmp_path):
+    import asyncio
+    import json
+
+    args = arguments(False)
+    args.guard = "refund-claim"
+    args.arms = "baseline"
+    args.alone = "none"
+    args.trials = 10
+    args.out = str(tmp_path / "guard.json")
+    seen = []
+
+    async def fake_rate(*a, **k):
+        seen.append(a)
+        return (0, 10)
+
+    monkeypatch.setattr(compare, "reproduction_rate", fake_rate)
+    asyncio.run(compare.main(args, "gemini"))
+    assert seen[0][3] == "gemini-refund-claim-t0.7"
+    assert seen[0][7].keywords["guard"] == "refund-claim"
+    saved = json.loads((tmp_path / "guard.json").read_text(encoding="utf-8"))
+    assert saved["guard"] == "refund-claim"

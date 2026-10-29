@@ -28,6 +28,8 @@ python scripts/build_report.py --dir results/main-v3 --repo https://github.com/s
 ## prompt-fix
 
 `small_refund-sequential.json` holds the 40-run comparison of the normal system prompt against the variant with one extra rule, for the refund failure: the hits, the trials and the Fisher exact p-values for each case.
+- `guard-false-claim.json`: the same refund pair with `--guard refund-claim`. The counted failure is a false refund claim. 0 of 10 for both prompts.
+- `guard-task.json`: the same guarded runs, counting an unfinished task. 8 of 10 with the normal prompt and 10 of 10 with the sequential prompt.
 
 ## groq
 

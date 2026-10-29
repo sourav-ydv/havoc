@@ -31,8 +31,9 @@ def cell(hits, trials):
 
 
 async def collect(args, provider, task, cases, target, scopes, results):
+    guard = getattr(args, "guard", None)
     for variant, scope in scopes.items():
-        runner = functools.partial(run_once, system_prompt=VARIANTS[variant])
+        runner = functools.partial(run_once, system_prompt=VARIANTS[variant], guard=guard)
         for label, faults in cases:
             if (variant, label) in results:
                 continue
@@ -48,9 +49,11 @@ async def main(args, provider):
     target = frozenset(args.target.split(","))
     alone = plan[:1] if args.alone == "first" else plan if args.alone == "all" else []
     cases = [("the pair", plan)] + [(f"{f.id} alone", [f]) for f in alone]
-    scopes = {"baseline": f"{provider}-t0.7"}
+    guard = getattr(args, "guard", None)
+    mark = f"-{guard}" if guard else ""
+    scopes = {"baseline": f"{provider}{mark}-t0.7"}
     if args.arms == "both":
-        scopes[args.variant] = f"{provider}-{args.variant}-t0.7"
+        scopes[args.variant] = f"{provider}-{args.variant}{mark}-t0.7"
     results = {}
 
     while True:
@@ -103,6 +106,7 @@ async def main(args, provider):
             "faults": [f.id for f in plan],
             "target": sorted(target),
             "variant": args.variant if both else None,
+            "guard": guard,
             "temperature": 0.7,
             "generated": time.strftime("%Y-%m-%d"),
             "results": rows,
@@ -132,6 +136,7 @@ if __name__ == "__main__":
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--out")
     parser.add_argument("--arms", choices=["both", "baseline"], default="both")
+    parser.add_argument("--guard", choices=["refund-claim"])
     args = parser.parse_args()
     os.environ["HAVOC_PROVIDERS"] = args.provider
     asyncio.run(main(args, args.provider))
