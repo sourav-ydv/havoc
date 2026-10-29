@@ -126,7 +126,67 @@ async def collect_cases(root):
     return cases
 
 
-def render_page(summary, cases, repo_url="", title="havoc"):
+PROVIDER_NAMES = {"groq": "Groq", "gemini": "Gemini", "ollama": "Ollama"}
+
+
+def provider_label(records):
+    names = sorted({PROVIDER_NAMES.get(record["provider"], record["provider"]) for record in records})
+    return ", ".join(names)
+
+
+def pair_count(record):
+    row = next(item for item in record["results"] if item["case"] == "the pair")
+    return row["baseline"]["hits"], row["baseline"]["trials"]
+
+
+def compound_limit(count):
+    if count == 0:
+        return "No saved failure needed both faults of a pair."
+    if count == 1:
+        return (
+            "Only one failure needed both faults of a pair, so any claim about "
+            "compound failures rests on a single event."
+        )
+    return (
+        f"Only {count} failures needed both faults of a pair, so any claim about "
+        "compound failures rests on very few events."
+    )
+
+
+def replication_note(records):
+    records = sorted(records, key=lambda record: record["task"])
+    parts = []
+    for record in records:
+        hits, trials = pair_count(record)
+        parts.append(f"{record['task']} {hits} of {trials}")
+    temps = {record["temperature"] for record in records}
+    where = (
+        f"at temperature {next(iter(temps))}"
+        if len(temps) == 1
+        else "at the temperatures saved with each file"
+    )
+    count = {1: "One", 2: "Two"}.get(len(records), str(len(records)))
+    return (
+        "The counts above are Gemini 3.5 Flash-Lite on five customer-support tasks, run on free tiers. "
+        f"{count} headline plans were repeated on {provider_label(records)} {where}: {'; '.join(parts)}. "
+        "The full sweep was not repeated. These numbers describe this setup, not agents in general."
+    )
+
+
+def replication_limit(records):
+    records = sorted(records, key=lambda record: record["task"])
+    parts = []
+    for record in records:
+        hits, trials = pair_count(record)
+        parts.append(f"{record['task']} {hits} of {trials}")
+    return (
+        f"A second provider ({provider_label(records)}) was checked on these plans only: {'; '.join(parts)}. "
+        "The full single-fault sweep and the data-corruption faults were not run on it. "
+        "One domain, five tasks."
+    )
+
+
+def render_page(summary, cases, repo_url="", title="havoc", replication=None):
     sr, sf = summary["single"]
     cr, cf = summary["compound"]
     pure = summary["pure_compound"]
@@ -220,6 +280,29 @@ def render_page(summary, cases, repo_url="", title="havoc"):
 
     repo = f'<a href="{esc(repo_url)}">source code on GitHub</a>' if repo_url else ""
     cases_html = "".join(case_block(c) for c in cases) or "<p>No saved cases yet.</p>"
+    note = (
+        replication_note(replication)
+        if replication
+        else (
+            "One model (Gemini 3.5 Flash-Lite), five customer-support tasks, free-tier limits. "
+            "These numbers describe this setup, not agents in general."
+        )
+    )
+    limit_items = [
+        esc(replication_limit(replication)) if replication else "One model, one domain, five tasks.",
+        "Even at temperature 0 the same run can differ, so a failure is a rate, not a yes or no.",
+        "The checks that read the agent's answer are heuristics.",
+        (
+            "Failing runs were re-run five times at temperature 0.7, which separates failures "
+            "that happen every time from ones that never happen and not much more."
+        ),
+        compound_limit(len(pure)),
+        (
+            "Delta debugging and fault injection for agents both existed before this. "
+            "I applied them to MCP agents with state-based checks."
+        ),
+    ]
+    limits_html = "\n".join(f"<li>{item}</li>" for item in limit_items)
 
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -234,8 +317,7 @@ any failing combination to the smallest set that still fails.</p>
 
 <div class="cards">{cards}</div>
 
-<p class="note">One model (Gemini 3.5 Flash-Lite), five customer-support tasks, free-tier limits.
-These numbers describe this setup, not agents in general.</p>
+<p class="note">{esc(note)}</p>
 
 <h2>How it works</h2>
 <div class="flow"><div>agent</div><i>→</i><div>proxy that records and breaks tool calls</div><i>→</i><div>MCP server and database</div><i>→</i><div>checks on the final state</div></div>
@@ -267,11 +349,6 @@ Open one to see what the agent saw next to what the server really sent.</p>
 
 <h2>Limits</h2>
 <ul>
-<li>One model, one domain, five tasks.</li>
-<li>Even at temperature 0 the same run can differ, so a failure is a rate, not a yes or no.</li>
-<li>The checks that read the agent's answer are heuristics.</li>
-<li>Failing runs were re-run five times at temperature 0.7, which separates failures that happen every time from ones that never happen and not much more.</li>
-<li>Only two failures needed both faults of a pair, so any claim about compound failures rests on very few events.</li>
-<li>Delta debugging and fault injection for agents both existed before this. I applied them to MCP agents with state-based checks.</li>
+{limits_html}
 </ul>
 </main></body></html>"""

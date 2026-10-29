@@ -6,9 +6,9 @@ Most agent tests only cover the happy path. I wanted to see what an agent does w
 
 Write-up: [What happens when two of an AI agent's tools fail at once](https://dev.to/souravydv/what-happens-when-two-of-an-ai-agents-tools-fail-at-once-9c3)
 
-The experiment is finished, and the short answer is: sometimes, but rarely. Pairs of faults did not break the agent more often than single faults did. One failure needed both faults of a pair. A second finding is subtler: a single failed refund already makes the agent send a premature "refund processed" email in about a quarter of runs, and a failed retry pushes that to about half. A one-line prompt change cut that to about 10%, and to 0 of 40 when only the first call fails. That is a large drop but not a complete fix. Details are in the results section, and there is a [report page](https://sourav-ydv.github.io/havoc/) where you can replay each saved failure.
+The experiment is finished, and the short answer is: sometimes, but rarely. Pairs of faults did not break the agent more often than single faults did. One failure needed both faults of a pair. A second finding is subtler: a single failed refund already makes the agent send a premature "refund processed" email in about a quarter of runs, and a failed retry pushes that to about half. A one-line prompt change cut that to about 10%, and to 0 of 40 when only the first call fails. That is a large drop but not a complete fix. I repeated the two plans behind those findings on Groq, 10 runs each, and neither finding reproduced. Details are in the results section, and there is a [report page](https://sourav-ydv.github.io/havoc/) where you can replay each saved failure.
 
-This covers one model (Gemini 3.5 Flash-Lite), one sandbox and five tasks, all on free tiers. It says something about this setup, not about agents in general.
+The full experiment covers one model (Gemini 3.5 Flash-Lite), one sandbox and five tasks, all on free tiers, with a smaller Groq check of two plans. It says something about this setup, not about agents in general.
 
 ## What it does
 
@@ -185,7 +185,7 @@ Gemini's free tier allows 500 requests per day on the model I use, so the full e
 The report page is built from the same data:
 
 ```bash
-python scripts/build_report.py --name main-v3 --repo https://github.com/sourav-ydv/havoc
+python scripts/build_report.py --name main-v3 --repo https://github.com/sourav-ydv/havoc --replication results/groq
 ```
 
 The data behind the numbers above is saved in `results/`, and `tests/test_results_data.py` checks that the headline counts come out of it. To print the report from it: `python scripts/experiment.py report --dir results/main-v3`. The model responses are not saved there (they live in a local cache), so the experiment can be re-scored from these files but not re-run without a model. The three regression cases in `regressions/` do include their model responses and replay offline.
@@ -276,6 +276,21 @@ The obvious fix is to stop the agent from confirming in the same step. I added o
 
 The drop is large and not noise (Fisher exact p = 0.0004 for the pair and p = 0.001 for the first call alone), but the rule did not remove the failure: 4 of the 40 runs with both calls failing still produced a false claim, and I have not looked into why. I also only tested it on the plan that exposed the problem, with one model, so I would not call it a general fix. What the exercise shows is the loop: find a failure with the tool, change something, and measure the change with the same tool.
 
+### The same plans on a second model
+
+The discovery run stayed on Gemini. I then ran the two plans behind the findings above on Groq (`openai/gpt-oss-120b`, the model named in the baseline), 10 times each at temperature 0.7. The saved files are `results/groq/small_refund-baseline.json` and `results/groq/ticket-pair-baseline.json`. They record the provider, the temperature and the hit counts. They do not record the traces, so this section does not describe how Groq ordered its calls. Ten runs is a small sample, and the intervals below are wide.
+
+The Gemini column is the fresh-run count already stored for that plan: 40 runs from `results/prompt-fix/small_refund-sequential.json` for the refund, and 5 runs from `results/main-v3/analysis.jsonl` for the ticket pair.
+
+| Plan | What was counted | Gemini | Groq |
+|---|---|---|---|
+| both `issue_refund` calls fail | false refund claim | 19 of 40 | 0 of 10 (0%, 0-28%) |
+| first `issue_refund` call fails | false refund claim | 10 of 40 | 0 of 10 (0%, 0-28%) |
+| both `create_ticket` calls fail | task not done | 5 of 5 | 1 of 10 (10%, 2-40%) |
+| first `create_ticket` call fails | task not done | 0 of 5 | 1 of 10 (10%, 2-40%) |
+
+Fisher exact p = 0.008 on the refund pair (19 of 40 against 0 of 10) and p = 0.002 on the ticket pair (5 of 5 against 1 of 10). The first refund call alone is p = 0.179. The first ticket call alone is p = 1.000. Neither main finding reproduced. The refund pair produced no false confirmation in these 10 Groq runs. The ticket pair left the task undone once in 10, and the first fault alone did the same, so that single Groq failure is not evidence that both faults were required. The data-corruption single faults, which failed in 5 of 5 fresh runs on Gemini, are not in these files.
+
 ### The retry limit
 
 My first version of the `retry_storm` check flagged three identical failing calls. The first full run reported five pure compounds, and three of them were different pairs of `issue_refund` failures on the partial refund task. When I read the traces, the agent had behaved correctly: two injected timeouts, then a third attempt that returned "already refunded", after which it sent an honest email. Three attempts is a normal retry budget, and my own injected pair plus one more attempt was enough to reach it.
@@ -336,7 +351,7 @@ Shrinking a failing input to a minimal one is not new either. Delta debugging co
 
 ## Known limits
 
-- One model, one domain, five tasks. Whether any of this carries over to other agents is something I still need to test.
+- The full experiment is one model (Gemini 3.5 Flash-Lite), one sandbox and five tasks. Two plans were repeated on Groq, 10 runs each, and those findings did not reproduce there. Whether any of this carries over to other agents is still open.
 - Everything runs on free tiers, so the experiments were slow and spread over several days.
 - The safety checks that read the agent's answer are heuristics.
 - Discovery used one run per plan, so a failure that happens one time in four is often missed. The count of 8 failing single faults is a lower bound, and the comparison between single faults and pairs inherits that.
@@ -349,6 +364,6 @@ Shrinking a failing input to a minimal one is not new either. Delta debugging co
 
 ## Not built yet
 
-- The same experiment on a second model, and on other tasks or domains
+- The full single-fault sweep on a second model. The data-corruption faults have not been run on Groq.
 - Checking the prompt fix on other tasks and on a second model
 - A check for "the customer was told the request is under review but nothing was recorded", which is how the ticket failure slipped past the safety checks
