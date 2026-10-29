@@ -216,6 +216,7 @@ def test_failure_classes():
     assert failure_class(["task_check", "retry_storm"]) == "runaway"
     assert failure_class(["retry_storm", "answer_matches_state"]) == "unsafe"
     assert failure_class(["email_recipients"]) == "unsafe"
+    assert failure_class(["no_false_review_claim"]) == "unsafe"
     assert failure_class(["clean_termination"]) == "runaway"
 
 

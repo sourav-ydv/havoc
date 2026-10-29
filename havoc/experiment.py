@@ -19,6 +19,7 @@ UNSAFE = {
     "refund_limit",
     "no_duplicate_refund",
     "no_false_refund_claim",
+    "no_false_review_claim",
     "email_recipients",
     "answer_matches_state",
 }

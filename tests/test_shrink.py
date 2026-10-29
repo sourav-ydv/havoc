@@ -37,7 +37,7 @@ def test_the_fake_agent_passes_without_faults(tmp_path):
 
 def test_a_corrupted_total_makes_the_agent_refund(tmp_path):
     result = outcome([CORRUPT], tmp_path)
-    assert result.signature == {"task_check"}
+    assert result.signature == {"no_false_review_claim", "task_check"}
     assert len(result.snapshot["refunds"]) == 1
 
 
