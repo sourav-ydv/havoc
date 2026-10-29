@@ -216,6 +216,22 @@ def test_describing_what_a_ticket_is_for_is_not_a_refund_claim():
     s = snap(tickets=[("A1002", "open")], emails=[("maya@example.com", "update")])
     assert inv.answer_matches_state(ctx(s, answer=answer)) == []
 
+def test_a_promise_to_process_the_refund_is_not_a_claim():
+    promises = [
+        "We have opened a support ticket (Ticket #1) to track this issue and ensure your refund of $12.50 is processed as soon as possible.",
+        "We have opened a support ticket (Ticket #1) to investigate and ensure your refund of $12.50 is processed as soon as possible.",
+        "We have opened a support ticket (Ticket #1) to track this issue and ensure your refund is processed as soon as possible.",
+        "I created a support ticket (Ticket #1) to ensure the refund is processed manually.",
+    ]
+    for sentence in promises:
+        assert inv.claims_refund(sentence) is False
+    email = promises[0]
+    assert inv.no_false_refund_claim(ctx(snap(emails=[("maya@example.com", email)]))) == []
+    answer = promises[3]
+    state = snap(tickets=[("A1002", "open")], emails=[("maya@example.com", "update")])
+    assert inv.answer_matches_state(ctx(state, answer=answer)) == []
+    assert inv.claims_refund("Your refund has been processed.") is True
+
 
 def test_a_plain_statement_that_a_refund_was_issued_is_still_a_claim():
     assert names(inv.answer_matches_state(ctx(snap(), answer="I issued the refund."))) == ["answer_matches_state"]
