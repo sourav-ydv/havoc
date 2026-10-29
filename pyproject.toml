@@ -19,6 +19,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 
+[project.scripts]
+havoc = "havoc.cli:console"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
